@@ -11,6 +11,13 @@
 #include "sources/memory/mac_memory_source.hpp"
 #include "sources/network/mac_network_source.hpp"
 #include "sources/storage/mac_storage_source.hpp"
+#elif defined(_WIN32)
+#include "sources/battery/win_battery_source.hpp"
+#include "sources/cpu/win_cpu_source.hpp"
+#include "sources/gpu/nvidia_gpu_source.hpp"
+#include "sources/memory/win_memory_source.hpp"
+#include "sources/network/win_network_source.hpp"
+#include "sources/storage/win_storage_source.hpp"
 #endif
 
 namespace idimus_hw {
@@ -24,6 +31,13 @@ std::vector<std::unique_ptr<Source>> createPlatformSources() {
     sources.push_back(std::make_unique<sources::MacNetworkSource>());
     sources.push_back(std::make_unique<sources::MacStorageSource>());
     sources.push_back(std::make_unique<sources::MacBatterySource>());
+#elif defined(_WIN32)
+    sources.push_back(std::make_unique<sources::WinCpuSource>());
+    sources.push_back(std::make_unique<sources::NvidiaGpuSource>());
+    sources.push_back(std::make_unique<sources::WinMemorySource>());
+    sources.push_back(std::make_unique<sources::WinNetworkSource>());
+    sources.push_back(std::make_unique<sources::WinStorageSource>());
+    sources.push_back(std::make_unique<sources::WinBatterySource>());
 #endif
     return sources;
 }

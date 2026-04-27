@@ -17,8 +17,13 @@ target_include_directories(idimus_hw
 
 if(MSVC)
     target_compile_options(idimus_hw PRIVATE /utf-8 /W3)
+    target_compile_definitions(idimus_hw PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 else()
     target_compile_options(idimus_hw PRIVATE -Wall -Wextra)
+endif()
+
+if(WIN32)
+    target_link_libraries(idimus_hw PUBLIC advapi32 iphlpapi setupapi powrprof ntdll)
 endif()
 
 if(APPLE)
