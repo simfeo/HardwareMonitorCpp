@@ -40,7 +40,8 @@ for (const Reading& r : s.forQuantity(Quantity::Temperature))
 | Platform | Sources |
 | --- | --- |
 | **macOS / Apple Silicon** | ✅ CPU (load, temp, package/ANE power, E/P-cluster frequency, fans), GPU (util, memory, temp, power, frequency), memory (used/avail/swap), network (per-interface bytes + throughput), storage (disks, size, free), battery (charge, capacities, health, voltage, current/power, temp, cycles). Verified on M1 Pro. |
-| Windows / Linux | planned |
+| **Windows** | ✅ CPU (per-core/total load, clock, name), NVIDIA GPU via NVML (temp, power, util, memory, clocks, fan), memory, network (per-interface + throughput), storage (disks, size, free, NVMe/ATA temperature), battery/UPS (charge, capacities, health, voltage, current/power, runtime, temp). Verified on i9-9900K + RTX 2080. CPU temperature/package power (ring-0 MSR via PawnIO) is a planned addition. |
+| Linux | planned |
 
 ## Building
 
