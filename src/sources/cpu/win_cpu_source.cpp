@@ -4,6 +4,7 @@
 
 #ifdef _WIN32
 
+#include <chrono>
 #include <vector>
 
 #include <windows.h>
@@ -14,6 +15,19 @@
 namespace idimus_hw {
 namespace sources {
 namespace {
+
+// Intel MSRs (facts; the IntelMSR PawnIO module allows exactly these).
+constexpr uint32_t MSR_RAPL_POWER_UNIT = 0x606;
+constexpr uint32_t MSR_PKG_ENERGY_STATUS = 0x611;
+constexpr uint32_t MSR_PP0_ENERGY_STATUS = 0x639; // cores
+constexpr uint32_t MSR_PP1_ENERGY_STATUS = 0x641; // uncore / iGPU
+constexpr uint32_t MSR_IA32_TEMPERATURE_TARGET = 0x1A2;
+constexpr uint32_t MSR_IA32_PACKAGE_THERM_STATUS = 0x1B1;
+
+double nowSeconds() {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
 
 // System processor performance info (NtQuerySystemInformation class 8). Declared locally — it is
 // not in the public SDK headers, but the layout is a stable documented fact.
@@ -56,7 +70,49 @@ std::vector<DeviceInfo> WinCpuSource::discover() {
                                       L"ProcessorNameString");
     info.name = name.empty() ? "CPU" : name;
     info.attributes["logical_cores"] = std::to_string(logicalCpuCount());
+
+    // Ring-0 MSR path (Intel + PawnIO). Reads TjMax and the RAPL energy unit once.
+    std::string vendor = win::regString(HKEY_LOCAL_MACHINE,
+                                        L"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
+                                        L"VendorIdentifier");
+    if (vendor == "GenuineIntel" && pawn_.ok() && pawn_.loadModule("IntelMSR")) {
+        uint64_t v = 0;
+        if (pawn_.readMsr(MSR_IA32_TEMPERATURE_TARGET, v)) {
+            double tj = double((v >> 16) & 0xFF);
+            if (tj > 0 && tj < 130)
+                tjMax_ = tj;
+        }
+        if (pawn_.readMsr(MSR_RAPL_POWER_UNIT, v)) {
+            unsigned esu = unsigned((v >> 8) & 0x1F); // energy status unit exponent
+            energyJoule_ = 1.0 / double(1u << esu);
+            msr_ = energyJoule_ > 0;
+        }
+        if (msr_)
+            info.attributes["tjmax_c"] = std::to_string(int(tjMax_));
+    }
     return {info};
+}
+
+void WinCpuSource::readRapl(std::vector<Reading>& out, uint32_t msr, Energy& st,
+                            const char* channel) {
+    uint64_t v = 0;
+    if (!pawn_.readMsr(msr, v))
+        return;
+    uint32_t cur = uint32_t(v & 0xFFFFFFFF);
+    double t = nowSeconds();
+    if (!st.primed) {
+        st.last = cur;
+        st.t = t;
+        st.primed = true;
+        return;
+    }
+    uint32_t deltaTicks = cur - st.last; // unsigned wrap handles the 32-bit counter rollover
+    double dt = t - st.t;
+    st.last = cur;
+    st.t = t;
+    if (dt > 0)
+        out.push_back(Reading{dev_, Quantity::Power, Unit::Watt, channel,
+                              double(deltaTicks) * energyJoule_ / dt});
 }
 
 void WinCpuSource::sample(std::vector<Reading>& out) {
@@ -104,6 +160,20 @@ void WinCpuSource::sample(std::vector<Reading>& out) {
         }
         emit(Quantity::Clock, Unit::Megahertz, "Core Clock", double(sumCur) / n);
         emit(Quantity::Clock, Unit::Megahertz, "Max Clock", double(maxMhz));
+    }
+
+    // --- Temperature + power (ring-0 MSR via PawnIO) ---
+    if (msr_) {
+        uint64_t v = 0;
+        if (pawn_.readMsr(MSR_IA32_PACKAGE_THERM_STATUS, v)) {
+            double readout = double((v >> 16) & 0x7F); // degrees below TjMax
+            double tC = tjMax_ - readout;
+            if (tC > 0 && tC < 130)
+                emit(Quantity::Temperature, Unit::Celsius, "Package", tC);
+        }
+        readRapl(out, MSR_PKG_ENERGY_STATUS, ePkg_, "Package Power");
+        readRapl(out, MSR_PP0_ENERGY_STATUS, ePp0_, "Cores Power");
+        readRapl(out, MSR_PP1_ENERGY_STATUS, ePp1_, "Uncore Power");
     }
 }
 
