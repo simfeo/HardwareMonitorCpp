@@ -40,7 +40,7 @@ for (const Reading& r : s.forQuantity(Quantity::Temperature))
 | Platform | Sources |
 | --- | --- |
 | **macOS / Apple Silicon** | ✅ CPU (load, temp, package/ANE power, E/P-cluster frequency, fans), GPU (util, memory, temp, power, frequency), memory (used/avail/swap), network (per-interface bytes + throughput), storage (disks, size, free), battery (charge, capacities, health, voltage, current/power, temp, cycles). Verified on M1 Pro. |
-| **Windows** | ✅ CPU (per-core/total load, clock, name), NVIDIA GPU via NVML (temp, power, util, memory, clocks, fan), memory, network (per-interface + throughput), storage (disks, size, free, NVMe/ATA temperature), battery/UPS (charge, capacities, health, voltage, current/power, runtime, temp). Verified on i9-9900K + RTX 2080. CPU temperature/package power (ring-0 MSR via PawnIO) is a planned addition. |
+| **Windows** | ✅ CPU (per-core/total load, clock, name; **package temperature + RAPL package/cores/uncore power** via ring-0 MSR through PawnIO), NVIDIA GPU via NVML (temp, power, util, memory, clocks, fan), memory, network (per-interface + throughput), storage (disks, size, free, NVMe/ATA temperature), battery/UPS (charge, capacities, health, voltage, current/power, runtime, temp). Verified on i9-9900K + RTX 2080. |
 | Linux | planned |
 
 ## Building
@@ -56,7 +56,10 @@ Some macOS sensors (SMC temperatures, fans) require running as root.
 
 ## Third-party resources
 
-Ring-0 access on Windows uses the **PawnIO** signed kernel driver; its precompiled modules are
-referenced as a git submodule under `third_party/pawnio-modules`
-(`namazso/PawnIO.Modules`, LGPL-2.1) and loaded at runtime as standalone files — never linked
-into this library.
+Ring-0 access on Windows (CPU temperature + RAPL power) uses the **PawnIO** signed kernel driver
+via its official `PawnIOLib.dll`, loaded dynamically. The Pawn module *sources* are referenced as
+a git submodule under `third_party/pawnio-modules` (`namazso/PawnIO.Modules`, LGPL-2.1, pinned to
+`0.1.6`). The **signed module binary** (`IntelMSR.bin`) is a release artifact and is **not**
+bundled — place it in a `modules/` folder next to the executable or set `IDIMUS_PAWNIO_DIR`.
+These reads require **administrator** privileges and PawnIO to be installed; without them the CPU
+source still reports load and clock.
