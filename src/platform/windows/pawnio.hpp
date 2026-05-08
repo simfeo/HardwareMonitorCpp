@@ -27,8 +27,11 @@ public:
     // Locates and loads a module .bin by base name (e.g. "IntelMSR"); returns false if missing.
     bool loadModule(const std::string& baseName);
 
-    // Reads an MSR via the IntelMSR module's ioctl_read_msr. False if the read is denied/fails.
+    // Reads an MSR via the module's ioctl_read_msr. False if the read is denied/fails.
     bool readMsr(uint32_t msr, uint64_t& value);
+
+    // Reads a System Management Network register (AMD) via ioctl_read_smn.
+    bool readSmn(uint32_t address, uint64_t& value);
 
 private:
     bool execute(const char* fn, const uint64_t* in, size_t inN, uint64_t* out, size_t outN);

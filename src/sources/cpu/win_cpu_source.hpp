@@ -33,16 +33,21 @@ private:
         bool primed = false;
     };
 
-    void readRapl(std::vector<Reading>& out, uint32_t msr, Energy& st, const char* channel);
+    enum class Vendor { Other, Intel, Amd };
+
+    void readRapl(std::vector<Reading>& out, uint32_t msr, Energy& st, const char* channel,
+                  double energyJoule);
 
     DeviceId dev_{DeviceKind::Cpu, 0};
     std::vector<Ticks> prev_;
 
     win::PawnIo pawn_;
-    bool msr_ = false;
-    double tjMax_ = 100.0;
-    double energyJoule_ = 0.0; // joules per RAPL energy tick
-    Energy ePkg_, ePp0_, ePp1_;
+    Vendor vendor_ = Vendor::Other;
+    bool msr_ = false;          // ring-0 path active (module loaded + units read)
+    double tjMax_ = 100.0;      // Intel
+    double energyJoule_ = 0.0;  // joules per RAPL energy tick (Intel or AMD)
+    Energy ePkg_, ePp0_, ePp1_; // Intel package/cores/uncore
+    Energy amdPkg_;             // AMD package energy
 };
 
 } // namespace sources

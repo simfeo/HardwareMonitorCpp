@@ -130,6 +130,17 @@ bool PawnIo::readMsr(uint32_t msr, uint64_t& value) {
     return true;
 }
 
+bool PawnIo::readSmn(uint32_t address, uint64_t& value) {
+    if (!moduleLoaded_)
+        return false;
+    uint64_t in = address;
+    uint64_t out = 0;
+    if (!execute("ioctl_read_smn", &in, 1, &out, 1))
+        return false;
+    value = out;
+    return true;
+}
+
 } // namespace win
 } // namespace idimus_hw
 

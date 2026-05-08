@@ -24,6 +24,11 @@ constexpr uint32_t MSR_PP1_ENERGY_STATUS = 0x641; // uncore / iGPU
 constexpr uint32_t MSR_IA32_TEMPERATURE_TARGET = 0x1A2;
 constexpr uint32_t MSR_IA32_PACKAGE_THERM_STATUS = 0x1B1;
 
+// AMD Zen (family 17h/19h) facts.
+constexpr uint32_t MSR_AMD_PWR_UNIT = 0xC0010299;
+constexpr uint32_t MSR_AMD_PKG_ENERGY = 0xC001029B;
+constexpr uint32_t SMN_THM_CUR_TEMP = 0x00059800; // SMU thermal: bits[31:21] = 0.125C steps
+
 double nowSeconds() {
     return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
         .count();
@@ -71,30 +76,38 @@ std::vector<DeviceInfo> WinCpuSource::discover() {
     info.name = name.empty() ? "CPU" : name;
     info.attributes["logical_cores"] = std::to_string(logicalCpuCount());
 
-    // Ring-0 MSR path (Intel + PawnIO). Reads TjMax and the RAPL energy unit once.
+    // Ring-0 MSR path (PawnIO). Picks the vendor module and reads the fixed scale factors once.
     std::string vendor = win::regString(HKEY_LOCAL_MACHINE,
                                         L"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
                                         L"VendorIdentifier");
-    if (vendor == "GenuineIntel" && pawn_.ok() && pawn_.loadModule("IntelMSR")) {
-        uint64_t v = 0;
+    if (!pawn_.ok())
+        return {info};
+    uint64_t v = 0;
+    if (vendor == "GenuineIntel" && pawn_.loadModule("IntelMSR")) {
+        vendor_ = Vendor::Intel;
         if (pawn_.readMsr(MSR_IA32_TEMPERATURE_TARGET, v)) {
             double tj = double((v >> 16) & 0xFF);
             if (tj > 0 && tj < 130)
                 tjMax_ = tj;
         }
         if (pawn_.readMsr(MSR_RAPL_POWER_UNIT, v)) {
-            unsigned esu = unsigned((v >> 8) & 0x1F); // energy status unit exponent
-            energyJoule_ = 1.0 / double(1u << esu);
+            energyJoule_ = 1.0 / double(1u << unsigned((v >> 8) & 0x1F));
             msr_ = energyJoule_ > 0;
         }
         if (msr_)
             info.attributes["tjmax_c"] = std::to_string(int(tjMax_));
+    } else if (vendor == "AuthenticAMD" && pawn_.loadModule("AMDFamily17")) {
+        vendor_ = Vendor::Amd;
+        if (pawn_.readMsr(MSR_AMD_PWR_UNIT, v)) {
+            energyJoule_ = 1.0 / double(1u << unsigned((v >> 8) & 0x1F));
+            msr_ = energyJoule_ > 0;
+        }
     }
     return {info};
 }
 
 void WinCpuSource::readRapl(std::vector<Reading>& out, uint32_t msr, Energy& st,
-                            const char* channel) {
+                            const char* channel, double energyJoule) {
     uint64_t v = 0;
     if (!pawn_.readMsr(msr, v))
         return;
@@ -112,7 +125,7 @@ void WinCpuSource::readRapl(std::vector<Reading>& out, uint32_t msr, Energy& st,
     st.t = t;
     if (dt > 0)
         out.push_back(Reading{dev_, Quantity::Power, Unit::Watt, channel,
-                              double(deltaTicks) * energyJoule_ / dt});
+                              double(deltaTicks) * energyJoule / dt});
 }
 
 void WinCpuSource::sample(std::vector<Reading>& out) {
@@ -163,17 +176,26 @@ void WinCpuSource::sample(std::vector<Reading>& out) {
     }
 
     // --- Temperature + power (ring-0 MSR via PawnIO) ---
-    if (msr_) {
+    if (msr_ && vendor_ == Vendor::Intel) {
         uint64_t v = 0;
         if (pawn_.readMsr(MSR_IA32_PACKAGE_THERM_STATUS, v)) {
-            double readout = double((v >> 16) & 0x7F); // degrees below TjMax
-            double tC = tjMax_ - readout;
+            double tC = tjMax_ - double((v >> 16) & 0x7F); // readout = degrees below TjMax
             if (tC > 0 && tC < 130)
                 emit(Quantity::Temperature, Unit::Celsius, "Package", tC);
         }
-        readRapl(out, MSR_PKG_ENERGY_STATUS, ePkg_, "Package Power");
-        readRapl(out, MSR_PP0_ENERGY_STATUS, ePp0_, "Cores Power");
-        readRapl(out, MSR_PP1_ENERGY_STATUS, ePp1_, "Uncore Power");
+        readRapl(out, MSR_PKG_ENERGY_STATUS, ePkg_, "Package Power", energyJoule_);
+        readRapl(out, MSR_PP0_ENERGY_STATUS, ePp0_, "Cores Power", energyJoule_);
+        readRapl(out, MSR_PP1_ENERGY_STATUS, ePp1_, "Uncore Power", energyJoule_);
+    } else if (msr_ && vendor_ == Vendor::Amd) {
+        uint64_t v = 0;
+        if (pawn_.readSmn(SMN_THM_CUR_TEMP, v)) {
+            double tC = double((v >> 21) & 0x7FF) * 0.125; // Tctl/Tdie
+            if (v & (1u << 19))
+                tC -= 49.0; // CUR_TEMP_RANGE_SEL
+            if (tC > 0 && tC < 130)
+                emit(Quantity::Temperature, Unit::Celsius, "Tctl/Tdie", tC);
+        }
+        readRapl(out, MSR_AMD_PKG_ENERGY, amdPkg_, "Package Power", energyJoule_);
     }
 }
 
