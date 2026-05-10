@@ -23,7 +23,7 @@ else()
 endif()
 
 if(WIN32)
-    target_link_libraries(idimus_hw PUBLIC advapi32 iphlpapi setupapi powrprof ntdll)
+    target_link_libraries(idimus_hw PUBLIC advapi32 iphlpapi setupapi powrprof ntdll dxgi pdh)
 endif()
 
 if(APPLE)

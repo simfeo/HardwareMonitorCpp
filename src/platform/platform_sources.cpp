@@ -15,6 +15,7 @@
 #include "sources/battery/win_battery_source.hpp"
 #include "sources/cpu/win_cpu_source.hpp"
 #include "sources/gpu/nvidia_gpu_source.hpp"
+#include "sources/gpu/win_gpu_source.hpp"
 #include "sources/memory/win_memory_source.hpp"
 #include "sources/network/win_network_source.hpp"
 #include "sources/storage/win_storage_source.hpp"
@@ -33,7 +34,8 @@ std::vector<std::unique_ptr<Source>> createPlatformSources() {
     sources.push_back(std::make_unique<sources::MacBatterySource>());
 #elif defined(_WIN32)
     sources.push_back(std::make_unique<sources::WinCpuSource>());
-    sources.push_back(std::make_unique<sources::NvidiaGpuSource>());
+    sources.push_back(std::make_unique<sources::NvidiaGpuSource>()); // NVIDIA (rich, NVML)
+    sources.push_back(std::make_unique<sources::WinGpuSource>());     // AMD + Intel (DXGI/PDH)
     sources.push_back(std::make_unique<sources::WinMemorySource>());
     sources.push_back(std::make_unique<sources::WinNetworkSource>());
     sources.push_back(std::make_unique<sources::WinStorageSource>());
