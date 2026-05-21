@@ -21,7 +21,6 @@ namespace idimus_hw {
 namespace sources {
 namespace {
 
-constexpr unsigned kVendorNvidia = 0x10DE; // handled by NvidiaGpuSource (NVML)
 constexpr unsigned kVendorIntel = 0x8086;
 constexpr uint64_t kIntegratedDedicatedMax = 512ull * 1024 * 1024;
 
@@ -78,14 +77,12 @@ std::vector<DeviceInfo> WinGpuSource::discover() {
     IDXGIAdapter1* adapter = nullptr;
     for (UINT i = 0; factory->EnumAdapters1(i, &adapter) != DXGI_ERROR_NOT_FOUND; ++i) {
         DXGI_ADAPTER_DESC1 desc{};
-        bool keep = false;
-        DeviceKind kind = DeviceKind::GpuDiscrete;
-        if (SUCCEEDED(adapter->GetDesc1(&desc)) && !(desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) &&
-            desc.VendorId != kVendorNvidia) {
-            keep = true;
-            if (desc.VendorId == kVendorIntel && desc.DedicatedVideoMemory <= kIntegratedDedicatedMax)
-                kind = DeviceKind::GpuIntegrated;
-        }
+        // Intel integrated only: discrete AMD/Intel/NVIDIA GPUs are covered by their telemetry
+        // SDKs (ADL/IGCL/NVML). PDH is the reliable, SDK-free path for the iGPU.
+        DeviceKind kind = DeviceKind::GpuIntegrated;
+        bool keep = SUCCEEDED(adapter->GetDesc1(&desc)) &&
+                    !(desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) && desc.VendorId == kVendorIntel &&
+                    desc.DedicatedVideoMemory <= kIntegratedDedicatedMax;
         if (keep) {
             Adapter a;
             a.id = DeviceId{kind, ordinal};
