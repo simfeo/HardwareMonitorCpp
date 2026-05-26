@@ -26,6 +26,11 @@ if(WIN32)
     target_link_libraries(idimus_hw PUBLIC advapi32 iphlpapi setupapi powrprof ntdll dxgi pdh)
 endif()
 
+if(UNIX AND NOT APPLE)
+    find_package(Threads REQUIRED)
+    target_link_libraries(idimus_hw PUBLIC Threads::Threads ${CMAKE_DL_LIBS}) # dl for NVML dlopen
+endif()
+
 if(APPLE)
     find_library(IOKIT_LIBRARY IOKit REQUIRED)
     find_library(COREFOUNDATION_LIBRARY CoreFoundation REQUIRED)

@@ -21,6 +21,14 @@
 #include "sources/memory/win_memory_source.hpp"
 #include "sources/network/win_network_source.hpp"
 #include "sources/storage/win_storage_source.hpp"
+#elif defined(__linux__)
+#include "sources/battery/linux_battery_source.hpp"
+#include "sources/cpu/linux_cpu_source.hpp"
+#include "sources/gpu/linux_drm_gpu_source.hpp"
+#include "sources/gpu/nvidia_gpu_source.hpp"
+#include "sources/memory/linux_memory_source.hpp"
+#include "sources/network/linux_network_source.hpp"
+#include "sources/storage/linux_storage_source.hpp"
 #endif
 
 namespace idimus_hw {
@@ -44,6 +52,14 @@ std::vector<std::unique_ptr<Source>> createPlatformSources() {
     sources.push_back(std::make_unique<sources::WinNetworkSource>());
     sources.push_back(std::make_unique<sources::WinStorageSource>());
     sources.push_back(std::make_unique<sources::WinBatterySource>());
+#elif defined(__linux__)
+    sources.push_back(std::make_unique<sources::LinuxCpuSource>());
+    sources.push_back(std::make_unique<sources::NvidiaGpuSource>());   // NVIDIA (NVML)
+    sources.push_back(std::make_unique<sources::LinuxDrmGpuSource>()); // AMD + Intel (sysfs/drm)
+    sources.push_back(std::make_unique<sources::LinuxMemorySource>());
+    sources.push_back(std::make_unique<sources::LinuxNetworkSource>());
+    sources.push_back(std::make_unique<sources::LinuxStorageSource>());
+    sources.push_back(std::make_unique<sources::LinuxBatterySource>());
 #endif
     return sources;
 }
