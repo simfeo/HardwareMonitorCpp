@@ -65,6 +65,10 @@ std::vector<DeviceInfo> MacStorageSource::discover() {
         if (!interconnect.empty())
             info.attributes["interconnect"] = interconnect;
         info.attributes["bsd_name"] = bsd;
+        std::string medium = mac::searchDictString(media, "Device Characteristics", "Medium Type");
+        info.attributes["media"] = medium.find("Solid") != std::string::npos ? "SSD"
+                                   : medium.find("Rotational") != std::string::npos ? "HDD"
+                                                                                    : "Unknown";
         result.push_back(info);
         IOObjectRelease(media);
     }

@@ -1,0 +1,172 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>idimus_hw monitor</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: #14171c; color: #dfe3ea; }
+  header { padding: 12px 18px; background: #1b1f27; border-bottom: 1px solid #2a2f3a;
+           display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
+  header h1 { font-size: 16px; margin: 0 12px 0 0; font-weight: 600; }
+  header label { display: inline-flex; align-items: center; gap: 5px; user-select: none; }
+  input[type=number] { width: 64px; background: #11141a; color: #dfe3ea; border: 1px solid #313845;
+                       border-radius: 5px; padding: 3px 6px; }
+  #status { margin-left: auto; color: #7f8aa0; font-size: 12px; }
+  main { padding: 16px; display: grid; gap: 14px;
+         grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+  .card { background: #1b1f27; border: 1px solid #2a2f3a; border-radius: 10px; padding: 12px 14px; }
+  .card h2 { font-size: 13px; margin: 0 0 8px; color: #aab3c5; font-weight: 600;
+             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row { display: flex; justify-content: space-between; padding: 2px 0; }
+  .row .k { color: #8b95a8; } .row .v { font-variant-numeric: tabular-nums; }
+  canvas { width: 100%; height: 90px; display: block; margin-top: 8px; background: #11141a;
+           border-radius: 6px; }
+  .hidden { display: none; }
+  .tag { font-size: 10px; color: #6b7790; border: 1px solid #313845; border-radius: 4px;
+         padding: 0 4px; margin-left: 6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>idimus_hw</h1>
+  <label><input type="checkbox" id="t-cpu" checked> CPU</label>
+  <label><input type="checkbox" id="t-gpu" checked> GPU</label>
+  <label><input type="checkbox" id="t-memory" checked> Memory</label>
+  <label><input type="checkbox" id="t-storage" checked> Storage</label>
+  <label><input type="checkbox" id="t-network" checked> Network</label>
+  <label>Update every <input type="number" id="interval" value="1" min="0.2" step="0.1"> s</label>
+  <span id="status">starting…</span>
+</header>
+<main id="cards"></main>
+
+<script>
+const HIST = 60;                       // history points kept for graphs
+const history = {};                    // deviceId -> [load%]
+let timer = null;
+
+const sym = { cpu:"CPU", "gpu-integrated":"GPU", "gpu-discrete":"GPU", memory:"Memory",
+              storage:"Disk", network:"Net", battery:"Battery", other:"" };
+
+function group(snap) {
+  const m = {};
+  for (const d of snap.devices) m[d.id] = { info:d, r:[] };
+  for (const r of snap.readings) if (m[r.device]) m[r.device].r.push(r);
+  return m;
+}
+function pick(dev, quantity, chanIncludes) {
+  return dev.r.find(x => x.quantity===quantity && (chanIncludes===undefined || x.channel.includes(chanIncludes)));
+}
+function num(r, digits=1) { return r ? r.value.toFixed(digits) : "n/a"; }
+function bytesRate(v) {
+  const u=["B/s","KB/s","MB/s","GB/s"]; let i=0; v=+v;
+  while (v>=1024 && i<3){v/=1024;i++;} return v.toFixed(1)+" "+u[i];
+}
+function bytes(v){ const u=["B","KB","MB","GB","TB"]; let i=0; v=+v;
+  while (v>=1024 && i<4){v/=1024;i++;} return v.toFixed(1)+" "+u[i]; }
+
+function rowsHTML(pairs) {
+  return pairs.filter(p=>p).map(([k,v])=>`<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("");
+}
+
+function enabled(kind) {
+  if (kind==="cpu") return document.getElementById("t-cpu").checked;
+  if (kind==="gpu-integrated"||kind==="gpu-discrete") return document.getElementById("t-gpu").checked;
+  if (kind==="memory") return document.getElementById("t-memory").checked;
+  if (kind==="storage") return document.getElementById("t-storage").checked;
+  if (kind==="network") return document.getElementById("t-network").checked;
+  return true;
+}
+
+function drawGraph(canvas, data) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = w*dpr; canvas.height = h*dpr;
+  const c = canvas.getContext("2d"); c.scale(dpr,dpr);
+  c.clearRect(0,0,w,h);
+  c.strokeStyle = "#2a2f3a"; c.lineWidth = 1;
+  for (let p=0;p<=100;p+=25){ const y=h-(p/100)*h; c.beginPath(); c.moveTo(0,y); c.lineTo(w,y); c.stroke(); }
+  if (data.length<2) return;
+  c.strokeStyle = "#4ea1ff"; c.lineWidth = 1.5; c.beginPath();
+  const step = w/(HIST-1);
+  data.forEach((v,i)=>{ const x=i*step, y=h-(Math.max(0,Math.min(100,v))/100)*h;
+    i?c.lineTo(x,y):c.moveTo(x,y); });
+  c.stroke();
+  c.fillStyle="rgba(78,161,255,0.12)"; c.lineTo((data.length-1)*step,h); c.lineTo(0,h); c.closePath(); c.fill();
+}
+
+function cardFor(dev) {
+  const k = dev.info.id.kind, name = dev.info.name, id = dev.info.id;
+  let rows = "", graph = false, gval = null;
+  if (k==="cpu") {
+    const load=pick(dev,"load","Total"), clk=pick(dev,"clock","Core"),
+          tmp=pick(dev,"temperature"), pwr=pick(dev,"power","Package");
+    rows = rowsHTML([["Load", num(load)+" %"], ["Clock", num(clk,0)+" MHz"],
+                     ["Temp", tmp?num(tmp)+" °C":"n/a"], ["Power", pwr?num(pwr)+" W":"n/a"]]);
+    graph=true; gval = load?load.value:0;
+  } else if (k==="gpu-integrated"||k==="gpu-discrete") {
+    const load=pick(dev,"load","Core"), clk=pick(dev,"clock","Core"),
+          tmp=pick(dev,"temperature"), pwr=pick(dev,"power");
+    rows = rowsHTML([["Load", num(load)+" %"], clk?["Clock",num(clk,0)+" MHz"]:null,
+                     tmp?["Temp",num(tmp)+" °C"]:null, pwr?["Power",num(pwr)+" W"]:null]);
+    graph=true; gval = load?load.value:0;
+  } else if (k==="memory") {
+    const use=pick(dev,"load","Usage"), used=pick(dev,"datavolume","Used"), tot=pick(dev,"datavolume","Total");
+    rows = rowsHTML([["Usage", num(use)+" %"], used&&tot?["Used", bytes(used.value)+" / "+bytes(tot.value)]:null]);
+    graph=true; gval = use?use.value:0;
+  } else if (k==="storage") {
+    const used=pick(dev,"level","Used"), tmp=pick(dev,"temperature"), free=pick(dev,"capacity","Free");
+    const ssd = dev.info.attributes && dev.info.attributes.media==="SSD";
+    rows = rowsHTML([["Used", num(used)+" %"], free?["Free", bytes(free.value)]:null,
+                     ssd&&tmp?["Temp", num(tmp)+" °C"]:(ssd?["Temp","n/a"]:null)]);
+  } else if (k==="network") {
+    const dn=pick(dev,"datarate","Download"), up=pick(dev,"datarate","Upload");
+    if (!dn && !up) return null;
+    rows = rowsHTML([["Down", bytesRate(dn?dn.value:0)], ["Up", bytesRate(up?up.value:0)]]);
+  } else return null;
+
+  if (graph) {
+    if (!history[id]) history[id]=[];
+    const arr = history[id]; arr.push(gval||0); while (arr.length>HIST) arr.shift();
+  }
+  const tag = dev.info.attributes && dev.info.attributes.media ? `<span class="tag">${dev.info.attributes.media}</span>` : "";
+  return `<div class="card" data-kind="${k}">
+            <h2>${sym[k]||""} · ${name}${tag}</h2>${rows}
+            ${graph?`<canvas data-id="${id}"></canvas>`:""}</div>`;
+}
+
+async function tick() {
+  let snap;
+  try {
+    const res = await fetch("/api/data", {cache:"no-store"});
+    snap = await res.json();
+  } catch(e) { document.getElementById("status").textContent = "disconnected"; return; }
+
+  const devs = group(snap);
+  const order = ["cpu","gpu-integrated","gpu-discrete","memory","storage","network"];
+  const sorted = Object.values(devs).sort((a,b)=>order.indexOf(a.info.id.kind)-order.indexOf(b.info.id.kind));
+
+  let html = "";
+  for (const d of sorted) { if (!enabled(d.info.id.kind)) continue; const c = cardFor(d); if (c) html += c; }
+  document.getElementById("cards").innerHTML = html;
+  // draw graphs after DOM update
+  document.querySelectorAll("canvas[data-id]").forEach(cv => {
+    const arr = history[cv.getAttribute("data-id")] || []; drawGraph(cv, arr);
+  });
+  document.getElementById("status").textContent = snap.devices.length + " devices · " + new Date().toLocaleTimeString();
+}
+
+function reschedule() {
+  if (timer) clearInterval(timer);
+  let s = parseFloat(document.getElementById("interval").value) || 1;
+  if (s < 0.2) s = 0.2;
+  timer = setInterval(tick, s*1000);
+}
+document.getElementById("interval").addEventListener("change", reschedule);
+tick(); reschedule();
+</script>
+</body>
+</html>

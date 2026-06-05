@@ -48,6 +48,29 @@ for (const Reading& r : s.forQuantity(Quantity::Temperature))
 | **Windows** | ✅ CPU — Intel **and** AMD: per-core/total load, clock, name; package/Tctl temperature + RAPL power via ring-0 MSR through PawnIO. GPU — NVIDIA via NVML, Intel integrated via DXGI+PDH (load + memory), AMD via ADL and Intel Arc via IGCL (temp/clocks/activity/power/fan/VRAM). Memory; network; storage (disks, size, free, NVMe/ATA temperature); battery + UPS. **Verified on real hardware:** CPU temp/power on i9-9900K, i7-8550U, **and Ryzen 7 3700X**; NVIDIA GPU (RTX 2080/3060 Ti); **Intel integrated GPU (UHD 620)**; laptop battery + desktop UPS. The **AMD Radeon (ADL)** and **Intel Arc (IGCL)** discrete-GPU telemetry paths are implemented from SDK facts but **not yet verified on Radeon/Arc hardware**. |
 | **Linux** | ✅ CPU (per-core/total load via /proc/stat, cpufreq clock, hwmon temperature, RAPL package power), memory (/proc/meminfo), network (/sys/class/net + throughput), storage (/sys/block, size, free, drive temperature), battery (/sys/class/power_supply), GPU — NVIDIA via NVML + AMD/Intel via /sys/class/drm + hwmon (busy %, VRAM, temps, fan, power, clocks). Verified on WSL2 (CPU load, memory, network, NVIDIA); hwmon/RAPL/storage/battery paths are for bare-metal Linux. |
 
+## Applications
+
+Two ready-to-ship monitors live in their own top-level folders, each with its own CMake:
+
+- **`console/`** — a live terminal monitor (`idimus_monitor`) showing CPU usage/clock/temperature,
+  GPU usage/clock/temperature, SSD temperatures (HDDs are skipped), and network throughput,
+  refreshing every second (or `idimus_monitor <seconds>`).
+  ```sh
+  cd console && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
+  ./build/bin/idimus_monitor 2
+  ```
+- **`webserver/`** — a Python dashboard. CMake builds a small C-ABI shared library wrapping
+  idimus_hw and assembles `build/dist/` (the library + `idimus_server.py` + `web/`). The server
+  uses only the standard-library `http.server` and loads the library via `ctypes`; the page draws
+  load graphs and offers toggles for which sections to show and the update interval.
+  ```sh
+  cd webserver && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
+  cd build/dist && python idimus_server.py        # http://127.0.0.1:8000
+  ```
+
+Both run without privileges for load/clock/memory/network/storage/GPU/battery; CPU temperature and
+package power additionally need administrator/root (and PawnIO on Windows).
+
 ## Building
 
 ```sh

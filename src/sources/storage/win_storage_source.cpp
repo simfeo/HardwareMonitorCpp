@@ -50,6 +50,18 @@ uint64_t queryGeometry(HANDLE h) {
     return 0;
 }
 
+// Seek-penalty query: SSDs report no seek penalty. Returns 1=SSD, 0=HDD, -1=unknown.
+int querySsd(HANDLE h) {
+    STORAGE_PROPERTY_QUERY q{};
+    q.PropertyId = StorageDeviceSeekPenaltyProperty;
+    q.QueryType = PropertyStandardQuery;
+    DEVICE_SEEK_PENALTY_DESCRIPTOR d{};
+    DWORD got = 0;
+    if (DeviceIoControl(h, IOCTL_STORAGE_QUERY_PROPERTY, &q, sizeof(q), &d, sizeof(d), &got, nullptr))
+        return d.IncursSeekPenalty ? 0 : 1;
+    return -1;
+}
+
 // StorageDeviceTemperatureProperty (universal, no elevation). Returns NaN if unavailable.
 double queryTemperature(HANDLE h) {
     STORAGE_PROPERTY_QUERY q{};
@@ -130,6 +142,8 @@ std::vector<DeviceInfo> WinStorageSource::discover() {
         std::string product = queryProductName(h);
         info.name = product.empty() ? ("PhysicalDrive" + std::to_string(n)) : product;
         info.attributes["physical_drive"] = std::to_string(n);
+        int ssd = querySsd(h);
+        info.attributes["media"] = ssd == 1 ? "SSD" : ssd == 0 ? "HDD" : "Unknown";
         result.push_back(std::move(info));
         ++ordinal;
     }

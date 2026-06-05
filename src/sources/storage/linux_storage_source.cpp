@@ -81,6 +81,8 @@ std::vector<DeviceInfo> LinuxStorageSource::discover() {
         std::string model = lnx::readTrim("/sys/block/" + n + "/device/model");
         info.name = model.empty() ? n : model;
         info.attributes["dev"] = "/dev/" + n;
+        std::string rot = lnx::readTrim("/sys/block/" + n + "/queue/rotational");
+        info.attributes["media"] = rot == "0" ? "SSD" : rot == "1" ? "HDD" : "Unknown";
         result.push_back(std::move(info));
         ++ordinal;
     }

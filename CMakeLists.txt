@@ -14,6 +14,8 @@ add_library(idimus_hw STATIC ${IDIMUS_HW_SOURCES})
 target_include_directories(idimus_hw
     PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+# Allow linking the static core into a shared library (the Python C-ABI module).
+set_target_properties(idimus_hw PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 if(MSVC)
     target_compile_options(idimus_hw PRIVATE /utf-8 /W3)
