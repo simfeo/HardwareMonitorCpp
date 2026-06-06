@@ -18,13 +18,15 @@
   #status { margin-left: auto; color: #7f8aa0; font-size: 12px; }
   main { padding: 16px; display: grid; gap: 14px;
          grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
-  .card { background: #1b1f27; border: 1px solid #2a2f3a; border-radius: 10px; padding: 12px 14px; }
+  .card { background: #1b1f27; border: 1px solid #2a2f3a; border-radius: 10px; padding: 12px 14px;
+          display: flex; flex-direction: column; }
   .card h2 { font-size: 13px; margin: 0 0 8px; color: #aab3c5; font-weight: 600;
              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .row { display: flex; justify-content: space-between; padding: 2px 0; }
   .row .k { color: #8b95a8; } .row .v { font-variant-numeric: tabular-nums; }
-  canvas { width: 100%; height: 90px; display: block; margin-top: 8px; background: #11141a;
+  canvas { width: 100%; height: 90px; display: block; margin-top: 12px; background: #11141a;
            border-radius: 6px; }
+  .card .grow { margin-top: auto; }   /* spacer so graphs bottom-align across a row */
   .hidden { display: none; }
   .tag { font-size: 10px; color: #6b7790; border: 1px solid #313845; border-radius: 4px;
          padding: 0 4px; margin-left: 6px; }
@@ -99,7 +101,7 @@ function drawGraph(canvas, data) {
 }
 
 function cardFor(dev) {
-  const k = dev.info.id.kind, name = dev.info.name, id = dev.info.id;
+  const k = dev.info.kind, name = dev.info.name, id = dev.info.id;
   let rows = "", graph = false, gval = null;
   if (k==="cpu") {
     const load=pick(dev,"load","Total"), clk=pick(dev,"clock","Core"),
@@ -119,12 +121,17 @@ function cardFor(dev) {
     graph=true; gval = use?use.value:0;
   } else if (k==="storage") {
     const used=pick(dev,"level","Used"), tmp=pick(dev,"temperature"), free=pick(dev,"capacity","Free");
+    const act=pick(dev,"load","Activity"), rd=pick(dev,"datarate","Read"), wr=pick(dev,"datarate","Write");
     const ssd = dev.info.attributes && dev.info.attributes.media==="SSD";
     rows = rowsHTML([["Used", num(used)+" %"], free?["Free", bytes(free.value)]:null,
+                     act?["Active", num(act)+" %"]:null,
+                     (rd||wr)?["R / W", bytesRate(rd?rd.value:0)+" / "+bytesRate(wr?wr.value:0)]:null,
                      ssd&&tmp?["Temp", num(tmp)+" °C"]:(ssd?["Temp","n/a"]:null)]);
+    graph=true; gval = act?act.value:0;
   } else if (k==="network") {
+    const link=pick(dev,"count","Link");
+    if (!link || link.value < 0.5) return null;   // only connected adapters (Task Manager style)
     const dn=pick(dev,"datarate","Download"), up=pick(dev,"datarate","Upload");
-    if (!dn && !up) return null;
     rows = rowsHTML([["Down", bytesRate(dn?dn.value:0)], ["Up", bytesRate(up?up.value:0)]]);
   } else return null;
 
@@ -135,7 +142,7 @@ function cardFor(dev) {
   const tag = dev.info.attributes && dev.info.attributes.media ? `<span class="tag">${dev.info.attributes.media}</span>` : "";
   return `<div class="card" data-kind="${k}">
             <h2>${sym[k]||""} · ${name}${tag}</h2>${rows}
-            ${graph?`<canvas data-id="${id}"></canvas>`:""}</div>`;
+            ${graph?`<div class="grow"></div><canvas data-id="${id}"></canvas>`:""}</div>`;
 }
 
 async function tick() {
@@ -147,10 +154,10 @@ async function tick() {
 
   const devs = group(snap);
   const order = ["cpu","gpu-integrated","gpu-discrete","memory","storage","network"];
-  const sorted = Object.values(devs).sort((a,b)=>order.indexOf(a.info.id.kind)-order.indexOf(b.info.id.kind));
+  const sorted = Object.values(devs).sort((a,b)=>order.indexOf(a.info.kind)-order.indexOf(b.info.kind));
 
   let html = "";
-  for (const d of sorted) { if (!enabled(d.info.id.kind)) continue; const c = cardFor(d); if (c) html += c; }
+  for (const d of sorted) { if (!enabled(d.info.kind)) continue; const c = cardFor(d); if (c) html += c; }
   document.getElementById("cards").innerHTML = html;
   // draw graphs after DOM update
   document.querySelectorAll("canvas[data-id]").forEach(cv => {

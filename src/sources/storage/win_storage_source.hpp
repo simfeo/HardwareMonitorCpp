@@ -11,25 +11,38 @@
 
 #include "idimus_hw/source.hpp"
 
-namespace idimus_hw {
-namespace sources {
+namespace idimus_hw
+{
+namespace sources
+{
 
-class WinStorageSource : public Source {
+class WinStorageSource : public Source
+{
 public:
     ~WinStorageSource() override;
 
-    std::string id() const override { return "windows.storage"; }
+    std::string id() const override
+    {
+        return "windows.storage";
+    }
     std::vector<DeviceInfo> discover() override;
     void sample(std::vector<Reading>& out) override;
 
 private:
-    struct Disk {
+    struct Disk
+    {
         DeviceId id;
         int number = -1;
         void* handle = nullptr; // Win32 HANDLE (kept open for temperature queries)
         uint64_t sizeBytes = 0;
     };
     std::vector<Disk> disks_;
+
+    // PDH PhysicalDisk performance counters (read/write throughput + activity); no elevation.
+    void* query_ = nullptr;
+    void* cRead_ = nullptr;
+    void* cWrite_ = nullptr;
+    void* cIdle_ = nullptr;
 };
 
 } // namespace sources
