@@ -12,17 +12,23 @@
 #include <cstdint>
 #include <string>
 
-namespace idimus_hw {
-namespace win {
+namespace idimus_hw
+{
+namespace win
+{
 
-class PawnIo {
+class PawnIo
+{
 public:
     PawnIo();
     ~PawnIo();
     PawnIo(const PawnIo&) = delete;
     PawnIo& operator=(const PawnIo&) = delete;
 
-    bool ok() const { return ready_; }
+    bool ok() const
+    {
+        return ready_;
+    }
 
     // Locates and loads a module .bin by base name (e.g. "IntelMSR"); returns false if missing.
     bool loadModule(const std::string& baseName);

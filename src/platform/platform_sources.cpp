@@ -31,9 +31,11 @@
 #include "sources/storage/linux_storage_source.hpp"
 #endif
 
-namespace idimus_hw {
+namespace idimus_hw
+{
 
-std::vector<std::unique_ptr<Source>> createPlatformSources() {
+std::vector<std::unique_ptr<Source>> createPlatformSources()
+{
     std::vector<std::unique_ptr<Source>> sources;
 #ifdef __APPLE__
     sources.push_back(std::make_unique<sources::MacCpuSource>());
@@ -45,9 +47,9 @@ std::vector<std::unique_ptr<Source>> createPlatformSources() {
 #elif defined(_WIN32)
     sources.push_back(std::make_unique<sources::WinCpuSource>());
     sources.push_back(std::make_unique<sources::NvidiaGpuSource>()); // NVIDIA discrete (NVML)
-    sources.push_back(std::make_unique<sources::AmdGpuSource>());     // AMD discrete (ADL)
-    sources.push_back(std::make_unique<sources::IntelGpuSource>());   // Intel Arc discrete (IGCL)
-    sources.push_back(std::make_unique<sources::WinGpuSource>());     // Intel integrated (DXGI/PDH)
+    sources.push_back(std::make_unique<sources::AmdGpuSource>());    // AMD discrete (ADL)
+    sources.push_back(std::make_unique<sources::IntelGpuSource>());  // Intel Arc discrete (IGCL)
+    sources.push_back(std::make_unique<sources::WinGpuSource>());    // Intel integrated (DXGI/PDH)
     sources.push_back(std::make_unique<sources::WinMemorySource>());
     sources.push_back(std::make_unique<sources::WinNetworkSource>());
     sources.push_back(std::make_unique<sources::WinStorageSource>());

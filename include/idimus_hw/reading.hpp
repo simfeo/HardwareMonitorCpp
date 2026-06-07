@@ -9,11 +9,13 @@
 #include "idimus_hw/device.hpp"
 #include "idimus_hw/units.hpp"
 
-namespace idimus_hw {
+namespace idimus_hw
+{
 
 // One measured value attributed to a device channel at sample time. Readings are plain values:
 // a snapshot is just a flat list of them, trivially filterable and serializable.
-struct Reading {
+struct Reading
+{
     DeviceId device;
     Quantity quantity = Quantity::Other;
     Unit unit = Unit::None;

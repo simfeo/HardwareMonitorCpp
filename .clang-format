@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# idimus_hw house style:
+#   - opening braces always go on their own line (Allman)
+#   - every if / else if / else / for / while / do has braces, even one-liners
+Language: Cpp
+BasedOnStyle: LLVM
+
+# Allman: every opening brace on a new line.
+BreakBeforeBraces: Allman
+
+# Force braces onto all control-flow statements that lack them.
+InsertBraces: true
+
+# Never collapse a control statement or block back onto one line (keeps the brace rules visible).
+AllowShortBlocksOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortEnumsOnASingleLine: false
+
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 100
+AccessModifierOffset: -4
+NamespaceIndentation: None
+IndentCaseLabels: true
+PointerAlignment: Left
+DerivePointerAlignment: false
+FixNamespaceComments: true
+SortIncludes: false

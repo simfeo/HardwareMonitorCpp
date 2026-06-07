@@ -11,11 +11,14 @@
 #include <string>
 #include <vector>
 
-namespace idimus_hw {
-namespace amd {
+namespace idimus_hw
+{
+namespace amd
+{
 
 // PMLog sensor identifiers we care about (ADL_PMLOG_* enum values from the ADL SDK).
-enum PmLog {
+enum PmLog
+{
     ClkGfx = 1,
     ClkMem = 2,
     TempEdge = 14,
@@ -30,20 +33,28 @@ enum PmLog {
     GfxPower = 36,
 };
 
-struct AdapterRef {
-    int index = 0;      // ADL adapter index
-    std::string name;   // strAdapterName
+struct AdapterRef
+{
+    int index = 0;    // ADL adapter index
+    std::string name; // strAdapterName
 };
 
-class Adl {
+class Adl
+{
 public:
     Adl();
     ~Adl();
     Adl(const Adl&) = delete;
     Adl& operator=(const Adl&) = delete;
 
-    bool ok() const { return ok_; }
-    const std::vector<AdapterRef>& adapters() const { return adapters_; }
+    bool ok() const
+    {
+        return ok_;
+    }
+    const std::vector<AdapterRef>& adapters() const
+    {
+        return adapters_;
+    }
 
     // Queries all PMLog sensors for an adapter: returns sensorId -> value for supported sensors.
     std::map<int, double> queryPmLog(int adapterIndex);

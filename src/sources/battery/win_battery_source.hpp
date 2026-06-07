@@ -10,19 +10,26 @@
 
 #include "idimus_hw/source.hpp"
 
-namespace idimus_hw {
-namespace sources {
+namespace idimus_hw
+{
+namespace sources
+{
 
-class WinBatterySource : public Source {
+class WinBatterySource : public Source
+{
 public:
     ~WinBatterySource() override;
 
-    std::string id() const override { return "windows.battery"; }
+    std::string id() const override
+    {
+        return "windows.battery";
+    }
     std::vector<DeviceInfo> discover() override;
     void sample(std::vector<Reading>& out) override;
 
 private:
-    struct Bat {
+    struct Bat
+    {
         DeviceId id;
         void* handle = nullptr; // Win32 HANDLE
         uint32_t tag = 0;

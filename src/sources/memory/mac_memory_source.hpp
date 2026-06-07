@@ -9,12 +9,18 @@
 
 #include "idimus_hw/source.hpp"
 
-namespace idimus_hw {
-namespace sources {
+namespace idimus_hw
+{
+namespace sources
+{
 
-class MacMemorySource : public Source {
+class MacMemorySource : public Source
+{
 public:
-    std::string id() const override { return "macos.memory"; }
+    std::string id() const override
+    {
+        return "macos.memory";
+    }
     std::vector<DeviceInfo> discover() override;
     void sample(std::vector<Reading>& out) override;
 

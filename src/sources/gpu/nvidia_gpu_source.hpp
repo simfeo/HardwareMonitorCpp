@@ -11,12 +11,18 @@
 #include "idimus_hw/source.hpp"
 #include "sources/gpu/nvml.hpp"
 
-namespace idimus_hw {
-namespace sources {
+namespace idimus_hw
+{
+namespace sources
+{
 
-class NvidiaGpuSource : public Source {
+class NvidiaGpuSource : public Source
+{
 public:
-    std::string id() const override { return "nvml.gpu"; }
+    std::string id() const override
+    {
+        return "nvml.gpu";
+    }
     std::vector<DeviceInfo> discover() override;
     void sample(std::vector<Reading>& out) override;
 

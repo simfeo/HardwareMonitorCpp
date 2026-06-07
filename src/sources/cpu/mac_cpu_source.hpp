@@ -14,19 +14,26 @@
 #include "platform/macos/ioreport.hpp"
 #include "platform/macos/smc.hpp"
 
-namespace idimus_hw {
-namespace sources {
+namespace idimus_hw
+{
+namespace sources
+{
 
-class MacCpuSource : public Source {
+class MacCpuSource : public Source
+{
 public:
     MacCpuSource();
 
-    std::string id() const override { return "macos.cpu"; }
+    std::string id() const override
+    {
+        return "macos.cpu";
+    }
     std::vector<DeviceInfo> discover() override;
     void sample(std::vector<Reading>& out) override;
 
 private:
-    struct Ticks {
+    struct Ticks
+    {
         uint64_t active = 0, idle = 0;
     };
 

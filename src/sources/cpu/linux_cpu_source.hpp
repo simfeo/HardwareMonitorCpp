@@ -11,25 +11,32 @@
 
 #include "idimus_hw/source.hpp"
 
-namespace idimus_hw {
-namespace sources {
+namespace idimus_hw
+{
+namespace sources
+{
 
-class LinuxCpuSource : public Source {
+class LinuxCpuSource : public Source
+{
 public:
-    std::string id() const override { return "linux.cpu"; }
+    std::string id() const override
+    {
+        return "linux.cpu";
+    }
     std::vector<DeviceInfo> discover() override;
     void sample(std::vector<Reading>& out) override;
 
 private:
-    struct Ticks {
+    struct Ticks
+    {
         uint64_t idle = 0, total = 0;
     };
     DeviceId dev_{DeviceKind::Cpu, 0};
     int cores_ = 0;
-    std::vector<Ticks> prev_;       // index 0 = aggregate, 1.. = per core
-    std::string hwmonDir_;          // resolved CPU hwmon directory
-    std::string raplEnergyPath_;    // powercap package energy_uj
-    uint64_t raplMaxRange_ = 0;     // wrap range (max_energy_range_uj)
+    std::vector<Ticks> prev_;    // index 0 = aggregate, 1.. = per core
+    std::string hwmonDir_;       // resolved CPU hwmon directory
+    std::string raplEnergyPath_; // powercap package energy_uj
+    uint64_t raplMaxRange_ = 0;  // wrap range (max_energy_range_uj)
     double prevEnergyUj_ = -1, prevEnergyTime_ = 0;
 };
 

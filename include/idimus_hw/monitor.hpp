@@ -11,9 +11,11 @@
 #include "idimus_hw/snapshot.hpp"
 #include "idimus_hw/source.hpp"
 
-namespace idimus_hw {
+namespace idimus_hw
+{
 
-class Monitor {
+class Monitor
+{
 public:
     Monitor() = default;
 
@@ -29,7 +31,10 @@ public:
     // Samples every source and returns an immutable snapshot.
     Snapshot poll();
 
-    const std::vector<DeviceInfo>& devices() const { return devices_; }
+    const std::vector<DeviceInfo>& devices() const
+    {
+        return devices_;
+    }
 
 private:
     std::vector<std::unique_ptr<Source>> sources_;

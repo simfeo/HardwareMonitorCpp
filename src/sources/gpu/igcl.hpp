@@ -11,10 +11,13 @@
 #include <string>
 #include <vector>
 
-namespace idimus_hw {
-namespace intel {
+namespace idimus_hw
+{
+namespace intel
+{
 
-struct GpuReadings {
+struct GpuReadings
+{
     bool hasTemp = false;
     double tempC = 0;
     bool hasClock = false;
@@ -25,21 +28,29 @@ struct GpuReadings {
     double powerW = 0; // computed from the energy-counter delta between calls
 };
 
-struct AdapterRef {
+struct AdapterRef
+{
     void* handle = nullptr; // ctl_device_adapter_handle_t
     std::string name;
     bool discrete = false;
 };
 
-class Igcl {
+class Igcl
+{
 public:
     Igcl();
     ~Igcl();
     Igcl(const Igcl&) = delete;
     Igcl& operator=(const Igcl&) = delete;
 
-    bool ok() const { return ok_; }
-    const std::vector<AdapterRef>& adapters() const { return adapters_; }
+    bool ok() const
+    {
+        return ok_;
+    }
+    const std::vector<AdapterRef>& adapters() const
+    {
+        return adapters_;
+    }
 
     // Reads telemetry for an adapter; computes power from the energy delta vs the previous call.
     GpuReadings read(size_t adapterOrdinal);

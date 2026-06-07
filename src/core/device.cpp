@@ -2,10 +2,13 @@
 // Copyright (c) 2026 idimus. Free for non-commercial use; commercial use requires a license.
 #include "idimus_hw/device.hpp"
 
-namespace idimus_hw {
+namespace idimus_hw
+{
 
-const char* deviceKindName(DeviceKind k) {
-    switch (k) {
+const char* deviceKindName(DeviceKind k)
+{
+    switch (k)
+    {
         case DeviceKind::Cpu: return "cpu";
         case DeviceKind::GpuIntegrated: return "gpu-integrated";
         case DeviceKind::GpuDiscrete: return "gpu-discrete";
@@ -20,7 +23,8 @@ const char* deviceKindName(DeviceKind k) {
     return "other";
 }
 
-std::string toString(const DeviceId& id) {
+std::string toString(const DeviceId& id)
+{
     return std::string(deviceKindName(id.kind)) + "/" + std::to_string(id.ordinal);
 }
 

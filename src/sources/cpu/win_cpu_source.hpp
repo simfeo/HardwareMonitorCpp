@@ -13,27 +13,40 @@
 #include "idimus_hw/source.hpp"
 #include "platform/windows/pawnio.hpp"
 
-namespace idimus_hw {
-namespace sources {
+namespace idimus_hw
+{
+namespace sources
+{
 
-class WinCpuSource : public Source {
+class WinCpuSource : public Source
+{
 public:
-    std::string id() const override { return "windows.cpu"; }
+    std::string id() const override
+    {
+        return "windows.cpu";
+    }
     std::vector<DeviceInfo> discover() override;
     void sample(std::vector<Reading>& out) override;
 
 private:
-    struct Ticks {
+    struct Ticks
+    {
         uint64_t idle = 0, total = 0;
     };
     // RAPL energy counter state for one domain (32-bit counter, wraps).
-    struct Energy {
+    struct Energy
+    {
         uint32_t last = 0;
         double t = 0;
         bool primed = false;
     };
 
-    enum class Vendor { Other, Intel, Amd };
+    enum class Vendor
+    {
+        Other,
+        Intel,
+        Amd
+    };
 
     void readRapl(std::vector<Reading>& out, uint32_t msr, Energy& st, const char* channel,
                   double energyJoule);

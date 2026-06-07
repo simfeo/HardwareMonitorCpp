@@ -9,17 +9,23 @@
 #include <string>
 #include <vector>
 
-namespace idimus_hw {
-namespace mac {
+namespace idimus_hw
+{
+namespace mac
+{
 
-class Smc {
+class Smc
+{
 public:
     Smc();
     ~Smc();
     Smc(const Smc&) = delete;
     Smc& operator=(const Smc&) = delete;
 
-    bool ok() const { return conn_ != 0; }
+    bool ok() const
+    {
+        return conn_ != 0;
+    }
 
     // Reads a 4-char key and converts to float per its data type. False on any failure.
     bool readFloat(const std::string& key, float& out);

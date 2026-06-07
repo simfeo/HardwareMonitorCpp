@@ -12,19 +12,26 @@
 
 #include "idimus_hw/source.hpp"
 
-namespace idimus_hw {
-namespace sources {
+namespace idimus_hw
+{
+namespace sources
+{
 
-class WinGpuSource : public Source {
+class WinGpuSource : public Source
+{
 public:
     ~WinGpuSource() override;
 
-    std::string id() const override { return "windows.gpu"; }
+    std::string id() const override
+    {
+        return "windows.gpu";
+    }
     std::vector<DeviceInfo> discover() override;
     void sample(std::vector<Reading>& out) override;
 
 private:
-    struct Adapter {
+    struct Adapter
+    {
         DeviceId id;
         std::string luidTag; // "luid_0x%08x_0x%08x" (lowercase) for matching PDH instances
     };

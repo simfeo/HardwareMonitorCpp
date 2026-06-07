@@ -9,12 +9,18 @@
 
 #include "idimus_hw/source.hpp"
 
-namespace idimus_hw {
-namespace sources {
+namespace idimus_hw
+{
+namespace sources
+{
 
-class WinMemorySource : public Source {
+class WinMemorySource : public Source
+{
 public:
-    std::string id() const override { return "windows.memory"; }
+    std::string id() const override
+    {
+        return "windows.memory";
+    }
     std::vector<DeviceInfo> discover() override;
     void sample(std::vector<Reading>& out) override;
 

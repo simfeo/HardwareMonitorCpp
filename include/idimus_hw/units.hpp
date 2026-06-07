@@ -4,11 +4,13 @@
 // idimus_hw — physical quantities and units for hardware telemetry readings.
 #pragma once
 
-namespace idimus_hw {
+namespace idimus_hw
+{
 
 // The semantic kind of a measured value. Kept orthogonal to Unit so a consumer can group/format
 // readings without parsing names.
-enum class Quantity {
+enum class Quantity
+{
     Temperature, // °C
     Load,        // % busy
     Power,       // W
@@ -26,7 +28,8 @@ enum class Quantity {
     Other,
 };
 
-enum class Unit {
+enum class Unit
+{
     Celsius,
     Percent,
     Watt,
@@ -43,8 +46,10 @@ enum class Unit {
     None,
 };
 
-inline const char* unitSymbol(Unit u) {
-    switch (u) {
+inline const char* unitSymbol(Unit u)
+{
+    switch (u)
+    {
         case Unit::Celsius: return "°C";
         case Unit::Percent: return "%";
         case Unit::Watt: return "W";

@@ -9,16 +9,26 @@
 #include "idimus_hw/device.hpp"
 #include "idimus_hw/reading.hpp"
 
-namespace idimus_hw {
+namespace idimus_hw
+{
 
-class Snapshot {
+class Snapshot
+{
 public:
     Snapshot() = default;
     Snapshot(std::vector<DeviceInfo> devices, std::vector<Reading> readings)
-        : devices_(std::move(devices)), readings_(std::move(readings)) {}
+        : devices_(std::move(devices)), readings_(std::move(readings))
+    {
+    }
 
-    const std::vector<DeviceInfo>& devices() const { return devices_; }
-    const std::vector<Reading>& readings() const { return readings_; }
+    const std::vector<DeviceInfo>& devices() const
+    {
+        return devices_;
+    }
+    const std::vector<Reading>& readings() const
+    {
+        return readings_;
+    }
 
     // Filters (return copies of matching readings; cheap structs).
     std::vector<Reading> forDevice(const DeviceId& id) const;

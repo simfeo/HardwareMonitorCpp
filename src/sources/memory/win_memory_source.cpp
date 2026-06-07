@@ -6,28 +6,35 @@
 
 #include <windows.h>
 
-namespace idimus_hw {
-namespace sources {
+namespace idimus_hw
+{
+namespace sources
+{
 
-std::vector<DeviceInfo> WinMemorySource::discover() {
+std::vector<DeviceInfo> WinMemorySource::discover()
+{
     DeviceInfo info;
     info.id = dev_;
     info.name = "System Memory";
     MEMORYSTATUSEX s{};
     s.dwLength = sizeof(s);
     if (GlobalMemoryStatusEx(&s))
+    {
         info.attributes["total_bytes"] = std::to_string(s.ullTotalPhys);
+    }
     return {info};
 }
 
-void WinMemorySource::sample(std::vector<Reading>& out) {
+void WinMemorySource::sample(std::vector<Reading>& out)
+{
     MEMORYSTATUSEX s{};
     s.dwLength = sizeof(s);
     if (!GlobalMemoryStatusEx(&s))
+    {
         return;
-    auto emit = [&](Quantity q, Unit u, const std::string& ch, double v) {
-        out.push_back(Reading{dev_, q, u, ch, v});
-    };
+    }
+    auto emit = [&](Quantity q, Unit u, const std::string& ch, double v)
+    { out.push_back(Reading{dev_, q, u, ch, v}); };
     uint64_t usedPhys = s.ullTotalPhys - s.ullAvailPhys;
     emit(Quantity::DataVolume, Unit::Byte, "Used", double(usedPhys));
     emit(Quantity::DataVolume, Unit::Byte, "Available", double(s.ullAvailPhys));

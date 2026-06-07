@@ -9,19 +9,26 @@
 #include <string>
 #include <vector>
 
-namespace idimus_hw {
-namespace mac {
+namespace idimus_hw
+{
+namespace mac
+{
 
-class IoReport {
+class IoReport
+{
 public:
     IoReport();
     ~IoReport();
     IoReport(const IoReport&) = delete;
     IoReport& operator=(const IoReport&) = delete;
 
-    bool ok() const { return ok_; }
+    bool ok() const
+    {
+        return ok_;
+    }
 
-    struct Sample {
+    struct Sample
+    {
         std::map<std::string, double> powerW;  // "CPU", "GPU", "ANE"
         std::map<std::string, double> freqMhz; // "E-CPU", "P-CPU", "GPU"
     };

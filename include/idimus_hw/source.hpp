@@ -12,9 +12,11 @@
 #include "idimus_hw/device.hpp"
 #include "idimus_hw/reading.hpp"
 
-namespace idimus_hw {
+namespace idimus_hw
+{
 
-class Source {
+class Source
+{
 public:
     virtual ~Source() = default;
 

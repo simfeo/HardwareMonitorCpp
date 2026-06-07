@@ -9,15 +9,21 @@
 
 #include "idimus_hw/source.hpp"
 
-namespace idimus_hw {
-namespace sources {
+namespace idimus_hw
+{
+namespace sources
+{
 
-class MacBatterySource : public Source {
+class MacBatterySource : public Source
+{
 public:
     MacBatterySource();
     ~MacBatterySource() override;
 
-    std::string id() const override { return "macos.battery"; }
+    std::string id() const override
+    {
+        return "macos.battery";
+    }
     std::vector<DeviceInfo> discover() override;
     void sample(std::vector<Reading>& out) override;
 

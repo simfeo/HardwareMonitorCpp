@@ -11,12 +11,18 @@
 #include "idimus_hw/source.hpp"
 #include "sources/gpu/adl.hpp"
 
-namespace idimus_hw {
-namespace sources {
+namespace idimus_hw
+{
+namespace sources
+{
 
-class AmdGpuSource : public Source {
+class AmdGpuSource : public Source
+{
 public:
-    std::string id() const override { return "windows.gpu.amd"; }
+    std::string id() const override
+    {
+        return "windows.gpu.amd";
+    }
     std::vector<DeviceInfo> discover() override;
     void sample(std::vector<Reading>& out) override;
 

@@ -12,15 +12,21 @@
 #include "platform/macos/ioreport.hpp"
 #include "platform/macos/smc.hpp"
 
-namespace idimus_hw {
-namespace sources {
+namespace idimus_hw
+{
+namespace sources
+{
 
-class MacGpuSource : public Source {
+class MacGpuSource : public Source
+{
 public:
     MacGpuSource();
     ~MacGpuSource() override;
 
-    std::string id() const override { return "macos.gpu"; }
+    std::string id() const override
+    {
+        return "macos.gpu";
+    }
     std::vector<DeviceInfo> discover() override;
     void sample(std::vector<Reading>& out) override;
 

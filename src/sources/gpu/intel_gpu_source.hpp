@@ -11,12 +11,18 @@
 #include "idimus_hw/source.hpp"
 #include "sources/gpu/igcl.hpp"
 
-namespace idimus_hw {
-namespace sources {
+namespace idimus_hw
+{
+namespace sources
+{
 
-class IntelGpuSource : public Source {
+class IntelGpuSource : public Source
+{
 public:
-    std::string id() const override { return "windows.gpu.intel_arc"; }
+    std::string id() const override
+    {
+        return "windows.gpu.intel_arc";
+    }
     std::vector<DeviceInfo> discover() override;
     void sample(std::vector<Reading>& out) override;
 

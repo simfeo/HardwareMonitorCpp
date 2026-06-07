@@ -7,12 +7,18 @@
 
 #include "idimus_hw/source.hpp"
 
-namespace idimus_hw {
-namespace sources {
+namespace idimus_hw
+{
+namespace sources
+{
 
-class LinuxMemorySource : public Source {
+class LinuxMemorySource : public Source
+{
 public:
-    std::string id() const override { return "linux.memory"; }
+    std::string id() const override
+    {
+        return "linux.memory";
+    }
     std::vector<DeviceInfo> discover() override;
     void sample(std::vector<Reading>& out) override;
 

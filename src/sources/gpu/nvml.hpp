@@ -8,27 +8,38 @@
 #include <cstdint>
 #include <string>
 
-namespace idimus_hw {
-namespace nv {
+namespace idimus_hw
+{
+namespace nv
+{
 
-struct Utilization {
+struct Utilization
+{
     unsigned gpu = 0;
     unsigned memory = 0;
 };
-struct MemoryInfo {
+struct MemoryInfo
+{
     uint64_t total = 0, free = 0, used = 0;
 };
 
 // Loaded NVML entry points; ok() is false if the driver/library isn't present.
-class Nvml {
+class Nvml
+{
 public:
     Nvml();
     ~Nvml();
     Nvml(const Nvml&) = delete;
     Nvml& operator=(const Nvml&) = delete;
 
-    bool ok() const { return ok_; }
-    unsigned deviceCount() const { return count_; }
+    bool ok() const
+    {
+        return ok_;
+    }
+    unsigned deviceCount() const
+    {
+        return count_;
+    }
 
     void* deviceHandle(unsigned index) const; // nvmlDevice_t
     std::string name(void* dev) const;

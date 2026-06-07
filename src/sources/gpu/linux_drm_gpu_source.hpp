@@ -9,17 +9,24 @@
 
 #include "idimus_hw/source.hpp"
 
-namespace idimus_hw {
-namespace sources {
+namespace idimus_hw
+{
+namespace sources
+{
 
-class LinuxDrmGpuSource : public Source {
+class LinuxDrmGpuSource : public Source
+{
 public:
-    std::string id() const override { return "linux.gpu.drm"; }
+    std::string id() const override
+    {
+        return "linux.gpu.drm";
+    }
     std::vector<DeviceInfo> discover() override;
     void sample(std::vector<Reading>& out) override;
 
 private:
-    struct Card {
+    struct Card
+    {
         DeviceId id;
         std::string cardName;   // "cardN"
         std::string devicePath; // /sys/class/drm/cardN/device
