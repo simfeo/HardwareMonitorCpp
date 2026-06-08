@@ -3,8 +3,8 @@
 A cross-platform hardware-telemetry library with a small, data-oriented core. It exposes the
 machine's sensors as a flat, queryable stream of **readings** rather than an object tree.
 
-Only non-copyrightable facts are reused (OS API signatures, IOCTL
-codes, MSR/SMC keys, JEDEC SPD layouts, NVMe offsets, PCI IDs).
+Only non-copyrightable facts are reused (OS API signatures, IOCTL codes, MSR/SMC keys, JEDEC SPD
+layouts, NVMe offsets, PCI IDs).
 
 ## License
 
