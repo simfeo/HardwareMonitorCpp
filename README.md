@@ -87,7 +87,14 @@ Some macOS sensors (SMC temperatures, fans) require running as root.
 Ring-0 access on Windows (CPU temperature + RAPL power) uses the **PawnIO** signed kernel driver
 via its official `PawnIOLib.dll`, loaded dynamically. The Pawn module *sources* are referenced as
 a git submodule under `third_party/pawnio-modules` (`namazso/PawnIO.Modules`, LGPL-2.1, pinned to
-`0.1.6`). The **signed module binary** (`IntelMSR.bin`) is a release artifact and is **not**
-bundled — place it in a `modules/` folder next to the executable or set `IDIMUS_PAWNIO_DIR`.
-These reads require **administrator** privileges and PawnIO to be installed; without them the CPU
-source still reports load and clock.
+`0.1.6`). The **signed module binary** (`IntelMSR.bin` on Intel, `AMDFamily17.bin` on AMD) is a
+release artifact and is **not** bundled — place it in a `modules/` folder next to the executable or
+set `IDIMUS_PAWNIO_DIR`. On Windows you can automate this with the helper script, which detects your
+CPU vendor, downloads the pinned module, and drops it next to each built executable:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\windows\setup-pawnio.ps1
+```
+
+These reads require **administrator** privileges and PawnIO (the driver itself, from
+<https://pawnio.eu>) to be installed; without them the CPU source still reports load and clock.
