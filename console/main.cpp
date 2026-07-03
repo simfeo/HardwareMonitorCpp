@@ -1179,7 +1179,8 @@ void render(const Snapshot& snap)
         else
         {
             // Multiple devices in one category: one sparkline row each.
-            int sw = std::max(10, std::min(cols - 30, 200));
+            // Row chrome is 31 cols ("  " + name[18] + " " + " " + value[9]); keep a 1-col margin.
+            int sw = std::max(10, std::min(cols - 32, 200));
             for (const DevView* d : tab.devs)
             {
                 Series s = seriesFor(tab.cat, *d, temp);

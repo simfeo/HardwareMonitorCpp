@@ -71,6 +71,12 @@ Two ready-to-ship monitors live in their own top-level folders, each with its ow
 Both run without privileges for load/clock/memory/network/storage/GPU/battery; CPU temperature and
 package power additionally need administrator/root (and PawnIO on Windows).
 
+> **Windows TUI + `sudo`:** the console monitor draws its graphs with Unicode block glyphs, which
+> need a TrueType console font (Cascadia Mono, Consolas). If you elevate with `sudo` and it is set to
+> **"In a new window"**, that window uses the raster default font and the sparklines show as boxes.
+> Set `sudo` to **Inline** (Settings → System → For developers → Sudo → *Inline*) so it runs in your
+> current terminal — or pick a TrueType font via the console window's Properties → Font.
+
 ## Building
 
 ```sh

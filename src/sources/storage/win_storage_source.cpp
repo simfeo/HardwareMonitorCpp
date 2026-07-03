@@ -13,6 +13,7 @@
 #include <windows.h>
 #include <winioctl.h>
 
+#include <nvme.h>
 #include <pdh.h>
 #include <pdhmsg.h>
 
@@ -127,7 +128,7 @@ int querySsd(HANDLE h)
 }
 
 // StorageDeviceTemperatureProperty (universal, no elevation). Returns NaN if unavailable.
-double queryTemperature(HANDLE h)
+double queryTemperatureProperty(HANDLE h)
 {
     STORAGE_PROPERTY_QUERY q{};
     q.PropertyId = StorageDeviceTemperatureProperty;
@@ -146,6 +147,57 @@ double queryTemperature(HANDLE h)
     }
     short t = d->TemperatureInfo[0].Temperature; // Celsius
     return (t > -100 && t < 200) ? double(t) : std::nan("");
+}
+
+// Fallback for NVMe drives whose driver doesn't answer StorageDeviceTemperatureProperty (e.g.
+// Crucial P3 Plus): read the composite temperature from the SMART/Health log page (0x02). The
+// value is Kelvin; the log also carries up to 8 per-sensor temperatures. Returns NaN if
+// unavailable (e.g. SATA drives, which reject the NVMe protocol query).
+double queryTemperatureNvme(HANDLE h)
+{
+    BYTE buf[sizeof(STORAGE_PROPERTY_QUERY) + sizeof(STORAGE_PROTOCOL_SPECIFIC_DATA) +
+             sizeof(NVME_HEALTH_INFO_LOG)] = {};
+    auto* q = reinterpret_cast<STORAGE_PROPERTY_QUERY*>(buf);
+    q->PropertyId = StorageDeviceProtocolSpecificProperty;
+    q->QueryType = PropertyStandardQuery;
+    auto* p = reinterpret_cast<STORAGE_PROTOCOL_SPECIFIC_DATA*>(q->AdditionalParameters);
+    p->ProtocolType = ProtocolTypeNvme;
+    p->DataType = NVMeDataTypeLogPage;
+    p->ProtocolDataRequestValue = NVME_LOG_PAGE_HEALTH_INFO; // 0x02
+    p->ProtocolDataRequestSubValue = 0;
+    p->ProtocolDataOffset = sizeof(STORAGE_PROTOCOL_SPECIFIC_DATA);
+    p->ProtocolDataLength = sizeof(NVME_HEALTH_INFO_LOG);
+
+    DWORD got = 0;
+    if (!DeviceIoControl(h, IOCTL_STORAGE_QUERY_PROPERTY, buf, sizeof(buf), buf, sizeof(buf), &got,
+                         nullptr))
+    {
+        return std::nan("");
+    }
+    // On return the buffer is a STORAGE_PROTOCOL_DATA_DESCRIPTOR; the log sits at
+    // &ProtocolSpecificData + ProtocolDataOffset.
+    auto* desc = reinterpret_cast<STORAGE_PROTOCOL_DATA_DESCRIPTOR*>(buf);
+    auto* pr = &desc->ProtocolSpecificData;
+    if (pr->ProtocolDataOffset + pr->ProtocolDataLength > sizeof(buf) - sizeof(STORAGE_PROPERTY_QUERY))
+    {
+        return std::nan("");
+    }
+    auto* log =
+        reinterpret_cast<NVME_HEALTH_INFO_LOG*>(reinterpret_cast<BYTE*>(pr) + pr->ProtocolDataOffset);
+    int kelvin = log->Temperature[0] | (log->Temperature[1] << 8); // composite temp, Kelvin
+    double c = double(kelvin) - 273.0;
+    return (c > -100 && c < 200 && kelvin != 0) ? c : std::nan("");
+}
+
+// Prefer the universal property; fall back to the NVMe health log for drives that don't support it.
+double queryTemperature(HANDLE h)
+{
+    double t = queryTemperatureProperty(h);
+    if (std::isnan(t))
+    {
+        t = queryTemperatureNvme(h);
+    }
+    return t;
 }
 
 // Sum free bytes of fixed volumes, attributed to the physical disk they live on.
