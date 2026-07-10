@@ -16,12 +16,14 @@
 // string, repainted in place from the home position with per-line erase — so there is no flicker.
 #include <algorithm>
 #include <chrono>
+#include <climits>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <deque>
+#include <fstream>
 #include <initializer_list>
 #include <map>
 #include <string>
@@ -39,6 +41,10 @@
 #include <sys/select.h>
 #include <termios.h>
 #include <unistd.h>
+#endif
+
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
 #endif
 
 using namespace idimus_hw;
@@ -161,6 +167,8 @@ enum Key
     K_NEXT,
     K_PREV,
     K_HELP,
+    K_UP,
+    K_DOWN,
     K_TAB1 = 10 // K_TAB1 + n selects tab n
 };
 
@@ -179,8 +187,12 @@ int keyForChar(int c)
         case '\t': return K_NEXT;
         case 'p':
         case 'P': return K_PREV;
+        case 'k': return K_UP;
+        case 'j': return K_DOWN;
         case 't':
         case 'T':
+        case '\r':
+        case '\n':
         case ' ': return K_TOGGLE;
         default: break;
     }
@@ -211,6 +223,14 @@ int pollKey(int timeoutMs)
                 if (c2 == 75)
                 {
                     return K_PREV; // left
+                }
+                if (c2 == 72)
+                {
+                    return K_UP;
+                }
+                if (c2 == 80)
+                {
+                    return K_DOWN;
                 }
                 return K_NONE;
             }
@@ -251,11 +271,158 @@ int pollKey(int timeoutMs)
             {
                 return K_PREV; // left / shift-tab
             }
+            if (seq[1] == 'A')
+            {
+                return K_UP;
+            }
+            if (seq[1] == 'B')
+            {
+                return K_DOWN;
+            }
         }
         return K_NONE;
     }
     return keyForChar(c);
 #endif
+}
+
+// ---- settings (persisted next to the binary as YAML) ----------------------
+// User choices of which network interfaces / storage devices to show. Only devices the user has
+// explicitly toggled appear here; anything else falls back to the default heuristic.
+struct Settings
+{
+    std::map<std::string, bool> net;     // key: interface name (e.g. "en0")
+    std::map<std::string, bool> storage; // key: stable device id (BSD name where available)
+};
+Settings g_settings;
+std::string g_configPath;
+
+// Directory holding the running executable, so the config can live right next to it.
+std::string exeDir()
+{
+    std::string path;
+#if defined(_WIN32)
+    wchar_t wbuf[MAX_PATH];
+    DWORD n = GetModuleFileNameW(nullptr, wbuf, MAX_PATH);
+    if (n > 0)
+    {
+        int len = WideCharToMultiByte(CP_UTF8, 0, wbuf, n, nullptr, 0, nullptr, nullptr);
+        path.resize(len);
+        WideCharToMultiByte(CP_UTF8, 0, wbuf, n, &path[0], len, nullptr, nullptr);
+    }
+#elif defined(__APPLE__)
+    char buf[PATH_MAX];
+    uint32_t sz = sizeof(buf);
+    if (_NSGetExecutablePath(buf, &sz) == 0)
+    {
+        char real[PATH_MAX];
+        path = realpath(buf, real) ? real : buf;
+    }
+#else
+    char buf[PATH_MAX];
+    ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+    if (n > 0)
+    {
+        buf[n] = '\0';
+        path = buf;
+    }
+#endif
+    size_t slash = path.find_last_of("/\\");
+    return slash == std::string::npos ? std::string(".") : path.substr(0, slash);
+}
+
+std::string trimStr(const std::string& s)
+{
+    size_t a = s.find_first_not_of(" \t\r\n");
+    size_t b = s.find_last_not_of(" \t\r\n");
+    return a == std::string::npos ? std::string() : s.substr(a, b - a + 1);
+}
+
+// Minimal reader for our tiny two-section YAML: `network:` / `storage:` each with `  key: bool`.
+void loadSettings(const std::string& path)
+{
+    std::ifstream f(path);
+    if (!f)
+    {
+        return;
+    }
+    std::string line, section;
+    while (std::getline(f, line))
+    {
+        size_t hash = line.find('#'); // strip comments
+        if (hash != std::string::npos)
+        {
+            line = line.substr(0, hash);
+        }
+        if (trimStr(line).empty())
+        {
+            continue;
+        }
+        bool indented = line[0] == ' ' || line[0] == '\t';
+        std::string t = trimStr(line);
+        size_t colon = t.find(':');
+        if (colon == std::string::npos)
+        {
+            continue;
+        }
+        std::string key = trimStr(t.substr(0, colon));
+        std::string val = trimStr(t.substr(colon + 1));
+        if (!indented)
+        {
+            section = key;
+            continue;
+        }
+        bool b = val == "true" || val == "1" || val == "yes" || val == "on";
+        if (section == "network")
+        {
+            g_settings.net[key] = b;
+        }
+        else if (section == "storage")
+        {
+            g_settings.storage[key] = b;
+        }
+    }
+}
+
+void saveSettings()
+{
+    if (g_configPath.empty())
+    {
+        return;
+    }
+    std::ofstream f(g_configPath, std::ios::trunc);
+    if (!f)
+    {
+        return;
+    }
+    f << "# idimus_monitor settings — also editable from the Settings tab.\n";
+    f << "# true = show the device, false = hide it.\n\n";
+    f << "network:\n";
+    for (const auto& kv : g_settings.net)
+    {
+        f << "  " << kv.first << ": " << (kv.second ? "true" : "false") << "\n";
+    }
+    f << "\nstorage:\n";
+    for (const auto& kv : g_settings.storage)
+    {
+        f << "  " << kv.first << ": " << (kv.second ? "true" : "false") << "\n";
+    }
+}
+
+// Default-hidden pseudo-interfaces on macOS (awdl/llw/bridge/ap/anpi/utun/…), mirroring how the
+// Windows source already drops virtual adapters. Users can still force any of these on in Settings.
+bool isVirtualIface(const std::string& n)
+{
+    static const char* const pfx[] = {"awdl", "llw",   "bridge", "ap",     "anpi", "utun", "gif",
+                                      "stf",  "vmnet", "XHC",    "pdp_ip", "p2p",  "lo"};
+    for (const char* p : pfx)
+    {
+        if (n.rfind(p, 0) == 0)
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 // ---- formatting helpers ---------------------------------------------------
@@ -415,6 +582,47 @@ std::string attr(const DeviceInfo& info, const std::string& key)
     return it == info.attributes.end() ? std::string() : it->second;
 }
 
+bool netLinkUp(const DevView& d)
+{
+    const Reading* l = find(d, Quantity::Count, "Link");
+    return l && l->value > 0.5;
+}
+
+// Whether a network interface should appear. Explicit user choice wins; otherwise the default is
+// "connected and not a known virtual adapter".
+bool showNet(const DevView& d)
+{
+    std::string name = d.info ? d.info->name : std::string();
+    auto it = g_settings.net.find(name);
+    if (it != g_settings.net.end())
+    {
+        return it->second;
+    }
+    if (isVirtualIface(name))
+    {
+        return false;
+    }
+    return netLinkUp(d);
+}
+
+// Stable settings key for a storage device: prefer the BSD name (unique) over the display name,
+// which can repeat across synthesized volumes.
+std::string storageKey(const DevView& d)
+{
+    if (!d.info)
+    {
+        return std::string();
+    }
+    std::string bsd = attr(*d.info, "bsd_name");
+    return bsd.empty() ? d.info->name : bsd;
+}
+
+bool showStorage(const DevView& d)
+{
+    auto it = g_settings.storage.find(storageKey(d));
+    return it == g_settings.storage.end() ? true : it->second;
+}
+
 // CPU clock label varies by platform: Apple Silicon reports per-cluster ("P-Cluster"/"E-Cluster"),
 // while Windows and Linux report "Core Clock". Try them in preference order so a clock shows on all.
 const Reading* cpuClock(const DevView& d)
@@ -452,7 +660,8 @@ enum class Cat
     Mem,
     Disk,
     Net,
-    Bat
+    Bat,
+    Settings
 };
 
 const char* catLabel(Cat c)
@@ -466,6 +675,7 @@ const char* catLabel(Cat c)
         case Cat::Disk: return "DISK";
         case Cat::Net: return "NET";
         case Cat::Bat: return "BAT";
+        case Cat::Settings: return "SET";
     }
     return "?";
 }
@@ -493,6 +703,7 @@ struct Ui
     std::map<int, bool> showTemp; // other tabs, keyed by Cat: false=load, true=temperature
     bool help = false;            // help overlay shown
     std::string msg;              // transient status line (e.g. "temperature unavailable")
+    int setSel = 0;               // selected row in the Settings tab
 };
 Ui g_ui;
 
@@ -500,6 +711,15 @@ Ui g_ui;
 std::vector<Cat> g_tabCats;
 // Per-tab: whether a temperature sensor is available (aligned with g_tabCats).
 std::vector<bool> g_tabHasTemp;
+
+// One selectable row in the Settings tab, rebuilt each render; input handling reads this.
+struct SetItem
+{
+    bool net;        // true: network interface, false: storage device
+    std::string key; // settings key to toggle
+    bool shown;      // current effective visibility
+};
+std::vector<SetItem> g_setItems;
 
 void handleKey(int k)
 {
@@ -520,25 +740,53 @@ void handleKey(int k)
     {
         g_ui.tab = n - 1;
     }
+
+    // Tab navigation works from any tab.
     if (k == K_NEXT)
     {
         g_ui.tab = (g_ui.tab + 1) % n;
+        return;
     }
-    else if (k == K_PREV)
+    if (k == K_PREV)
     {
         g_ui.tab = (g_ui.tab + n - 1) % n;
+        return;
     }
-    else if (k >= K_TAB1)
+    if (k >= K_TAB1)
     {
         int idx = k - K_TAB1;
         if (idx < n)
         {
             g_ui.tab = idx;
         }
+        return;
     }
-    else if (k == K_TOGGLE)
+
+    Cat c = g_tabCats[g_ui.tab];
+
+    // Settings tab: up/down move the selection, toggle flips it and persists.
+    if (c == Cat::Settings)
     {
-        Cat c = g_tabCats[g_ui.tab];
+        int m = static_cast<int>(g_setItems.size());
+        if (k == K_UP && g_ui.setSel > 0)
+        {
+            g_ui.setSel--;
+        }
+        else if (k == K_DOWN && g_ui.setSel + 1 < m)
+        {
+            g_ui.setSel++;
+        }
+        else if (k == K_TOGGLE && g_ui.setSel >= 0 && g_ui.setSel < m)
+        {
+            const SetItem& it = g_setItems[g_ui.setSel];
+            (it.net ? g_settings.net : g_settings.storage)[it.key] = !it.shown;
+            saveSettings();
+        }
+        return;
+    }
+
+    if (k == K_TOGGLE)
+    {
         if (c == Cat::Overview)
         {
             return; // overview has no mode to toggle
@@ -891,11 +1139,11 @@ void renderOverview(const std::map<DeviceId, DevView>& devs, std::vector<std::st
         push();
     }
 
-    // Storage
+    // Storage (only devices enabled in Settings)
     bool anyDisk = false;
     for (auto& kv : devs)
     {
-        if (kv.second.info && kv.second.info->id.kind == DeviceKind::Storage)
+        if (kv.second.info && kv.second.info->id.kind == DeviceKind::Storage && showStorage(kv.second))
         {
             anyDisk = true;
         }
@@ -906,7 +1154,7 @@ void renderOverview(const std::map<DeviceId, DevView>& devs, std::vector<std::st
         for (auto& kv : devs)
         {
             const DevView& d = kv.second;
-            if (!d.info || d.info->id.kind != DeviceKind::Storage)
+            if (!d.info || d.info->id.kind != DeviceKind::Storage || !showStorage(d))
             {
                 continue;
             }
@@ -932,7 +1180,7 @@ void renderOverview(const std::map<DeviceId, DevView>& devs, std::vector<std::st
         push();
     }
 
-    // Network: only connected interfaces (link up), like Task Manager.
+    // Network: interfaces enabled in Settings (default: connected, non-virtual).
     std::vector<const DevView*> active;
     for (auto& kv : devs)
     {
@@ -941,8 +1189,7 @@ void renderOverview(const std::map<DeviceId, DevView>& devs, std::vector<std::st
         {
             continue;
         }
-        const Reading* link = find(d, Quantity::Count, "Link");
-        if (valueOr(link, 0) > 0.5)
+        if (showNet(d))
         {
             active.push_back(&d);
         }
@@ -960,6 +1207,93 @@ void renderOverview(const std::map<DeviceId, DevView>& devs, std::vector<std::st
         }
         push();
     }
+}
+
+// The Settings tab: a selectable list of network interfaces and storage devices, each with a
+// show/hide checkbox. Toggling persists to the YAML file next to the binary.
+void renderSettings(const std::map<DeviceId, DevView>& devs, std::vector<std::string>& body)
+{
+    auto push = [&](const std::string& s = "") { body.push_back(s); };
+
+    struct Item
+    {
+        bool net;
+        std::string key;
+        std::string label;
+        std::string extra;
+        bool shown;
+    };
+    std::vector<Item> items;
+    for (auto& kv : devs) // network first
+    {
+        const DevView& d = kv.second;
+        if (!d.info || d.info->id.kind != DeviceKind::Network)
+        {
+            continue;
+        }
+        items.push_back({true, d.info->name, d.info->name, netLinkUp(d) ? "link up" : "link down",
+                         showNet(d)});
+    }
+    for (auto& kv : devs) // then storage
+    {
+        const DevView& d = kv.second;
+        if (!d.info || d.info->id.kind != DeviceKind::Storage)
+        {
+            continue;
+        }
+        std::string bsd = attr(*d.info, "bsd_name");
+        items.push_back({false, storageKey(d), d.info->name, bsd.empty() ? "" : "(" + bsd + ")",
+                         showStorage(d)});
+    }
+
+    if (g_ui.setSel >= static_cast<int>(items.size()))
+    {
+        g_ui.setSel = static_cast<int>(items.size()) - 1;
+    }
+    if (g_ui.setSel < 0)
+    {
+        g_ui.setSel = 0;
+    }
+
+    push(std::string("  ") + HEAD + BOLD + "SETTINGS" + RESET + GREY + "  choose what to show" +
+         RESET);
+    push();
+
+    g_setItems.clear();
+    int idx = 0;
+    bool netHeader = false, stoHeader = false;
+    for (const Item& it : items)
+    {
+        if (it.net && !netHeader)
+        {
+            push(std::string("  ") + HEAD + BOLD + "Network interfaces" + RESET);
+            netHeader = true;
+        }
+        if (!it.net && !stoHeader)
+        {
+            if (netHeader)
+            {
+                push();
+            }
+            push(std::string("  ") + HEAD + BOLD + "Storage devices" + RESET);
+            stoHeader = true;
+        }
+        bool sel = idx == g_ui.setSel;
+        std::string cursor = sel ? std::string(CYAN) + "  > " + RESET : "    ";
+        std::string box = it.shown ? std::string(GREEN) + "[x]" + RESET
+                                   : std::string(GREY) + "[ ]" + RESET;
+        std::string name = sel ? std::string(BOLD) + truncPad(it.label, 26) + RESET
+                               : truncPad(it.label, 26);
+        push(cursor + box + " " + name + "  " + GREY + it.extra + RESET);
+        g_setItems.push_back({it.net, it.key, it.shown});
+        ++idx;
+    }
+    if (items.empty())
+    {
+        push(std::string("  ") + GREY + "no network or storage devices" + RESET);
+    }
+    push();
+    push(std::string("  ") + GREY + "↑/↓ select · Space toggle · saved to " + g_configPath + RESET);
 }
 
 void render(const Snapshot& snap)
@@ -982,6 +1316,7 @@ void render(const Snapshot& snap)
             {"Left / Right", "switch tab"},
             {"1 - 9", "jump to tab"},
             {"t / Space", "toggle mode (CPU: overall/logical, others: load/temp)"},
+            {"Up / Down", "move selection (Settings tab)"},
             {"h / ?", "toggle this help"},
             {"q", "quit"},
         };
@@ -1036,14 +1371,14 @@ void render(const Snapshot& snap)
             {
                 continue;
             }
-            // Network: only connected interfaces (link up), like Task Manager.
-            if (cat == Cat::Net)
+            // Network / storage: honor the Settings show/hide choices.
+            if (cat == Cat::Net && !showNet(kv.second))
             {
-                const Reading* link = find(kv.second, Quantity::Count, "Link");
-                if (!link || link->value < 0.5)
-                {
-                    continue;
-                }
+                continue;
+            }
+            if (cat == Cat::Disk && !showStorage(kv.second))
+            {
+                continue;
             }
             t.devs.push_back(&kv.second);
         }
@@ -1051,6 +1386,12 @@ void render(const Snapshot& snap)
         {
             tabs.push_back(std::move(t));
         }
+    }
+    // Settings is always available as the last tab.
+    {
+        Tab st;
+        st.cat = Cat::Settings;
+        tabs.push_back(std::move(st));
     }
 
     g_tabCats.clear();
@@ -1102,6 +1443,10 @@ void render(const Snapshot& snap)
         push(std::string("  ") + HEAD + BOLD + "OVERVIEW" + RESET + GREY + "  all hardware" + RESET);
         push();
         renderOverview(devs, body);
+    }
+    else if (tab.cat == Cat::Settings)
+    {
+        renderSettings(devs, body);
     }
     else
     {
@@ -1239,6 +1584,9 @@ int main(int argc, char** argv)
 #ifdef SIGTERM
     std::signal(SIGTERM, onSignal);
 #endif
+    g_configPath = exeDir() + "/idimus_monitor.yaml";
+    loadSettings(g_configPath);
+
     std::atexit(leaveTui);
     enterTui();
 
