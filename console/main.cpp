@@ -60,6 +60,7 @@ constexpr const char* GREEN = "\033[38;5;77m";
 constexpr const char* YELLOW = "\033[38;5;179m";
 constexpr const char* RED = "\033[38;5;167m";
 constexpr const char* CYAN = "\033[38;5;80m";
+constexpr const char* BLUE = "\033[38;5;39m"; // swap overlay on the memory graph
 constexpr const char* GREY = "\033[38;5;245m";
 constexpr const char* HEAD = "\033[38;5;111m"; // section heads
 constexpr const char* TRACK = "\033[38;5;238m";
@@ -291,8 +292,10 @@ int pollKey(int timeoutMs)
 // explicitly toggled appear here; anything else falls back to the default heuristic.
 struct Settings
 {
-    std::map<std::string, bool> net;     // key: interface name (e.g. "en0")
-    std::map<std::string, bool> storage; // key: stable device id (BSD name where available)
+    std::map<std::string, bool> net;      // key: interface name (e.g. "en0")
+    std::map<std::string, bool> storage;  // key: stable device id (BSD name where available)
+    std::string cpuCoreStyle = "rows";    // "rows" (one sparkline each) or "grid" (Task-Manager)
+    std::string swapScale = "fullness";   // "fullness" (% of swap total) or "ram" (% of RAM total)
 };
 Settings g_settings;
 std::string g_configPath;
@@ -372,6 +375,18 @@ void loadSettings(const std::string& path)
             section = key;
             continue;
         }
+        if (section == "options")
+        {
+            if (key == "cpu_cores" && (val == "rows" || val == "grid"))
+            {
+                g_settings.cpuCoreStyle = val;
+            }
+            else if (key == "swap_scale" && (val == "fullness" || val == "ram"))
+            {
+                g_settings.swapScale = val;
+            }
+            continue;
+        }
         bool b = val == "true" || val == "1" || val == "yes" || val == "on";
         if (section == "network")
         {
@@ -397,7 +412,10 @@ void saveSettings()
     }
     f << "# idimus_monitor settings — also editable from the Settings tab.\n";
     f << "# true = show the device, false = hide it.\n\n";
-    f << "network:\n";
+    f << "options:\n";
+    f << "  cpu_cores: " << g_settings.cpuCoreStyle << "\n";
+    f << "  swap_scale: " << g_settings.swapScale << "\n";
+    f << "\nnetwork:\n";
     for (const auto& kv : g_settings.net)
     {
         f << "  " << kv.first << ": " << (kv.second ? "true" : "false") << "\n";
@@ -699,25 +717,29 @@ bool catOf(DeviceKind k, Cat& out)
 struct Ui
 {
     int tab = 0;
-    bool cpuLogical = false;      // CPU tab: false=overall graph, true=per-core sparklines
-    std::map<int, bool> showTemp; // other tabs, keyed by Cat: false=load, true=temperature
-    bool help = false;            // help overlay shown
-    std::string msg;              // transient status line (e.g. "temperature unavailable")
-    int setSel = 0;               // selected row in the Settings tab
+    std::map<int, int> view; // selected view within a tab, keyed by Cat (0 = primary load view)
+    bool help = false;       // help overlay shown
+    std::string msg;         // transient status line (e.g. "no thermal sensors")
+    int setSel = 0;          // selected row in the Settings tab
 };
 Ui g_ui;
 
 // The categories currently shown as tabs, rebuilt each render; input handling reads this.
 std::vector<Cat> g_tabCats;
-// Per-tab: whether a temperature sensor is available (aligned with g_tabCats).
-std::vector<bool> g_tabHasTemp;
+// Per-tab: number of cyclable views (load + thermal graphs), aligned with g_tabCats.
+std::vector<int> g_tabViewCount;
 
 // One selectable row in the Settings tab, rebuilt each render; input handling reads this.
 struct SetItem
 {
-    bool net;        // true: network interface, false: storage device
+    enum Kind
+    {
+        Net,     // network interface (toggle visibility)
+        Storage, // storage device (toggle visibility)
+        Option   // a display option (toggle its value)
+    } kind;
     std::string key; // settings key to toggle
-    bool shown;      // current effective visibility
+    bool on;         // current state (shown, or option enabled)
 };
 std::vector<SetItem> g_setItems;
 
@@ -779,40 +801,78 @@ void handleKey(int k)
         else if (k == K_TOGGLE && g_ui.setSel >= 0 && g_ui.setSel < m)
         {
             const SetItem& it = g_setItems[g_ui.setSel];
-            (it.net ? g_settings.net : g_settings.storage)[it.key] = !it.shown;
+            if (it.kind == SetItem::Net)
+            {
+                g_settings.net[it.key] = !it.on;
+            }
+            else if (it.kind == SetItem::Storage)
+            {
+                g_settings.storage[it.key] = !it.on;
+            }
+            else if (it.kind == SetItem::Option && it.key == "cpu_cores")
+            {
+                g_settings.cpuCoreStyle = it.on ? "rows" : "grid";
+            }
+            else if (it.kind == SetItem::Option && it.key == "swap_scale")
+            {
+                g_settings.swapScale = it.on ? "ram" : "fullness";
+            }
             saveSettings();
         }
         return;
     }
 
+    // Other tabs: t cycles through the tab's views (primary load, then each thermal graph).
     if (k == K_TOGGLE)
     {
         if (c == Cat::Overview)
         {
-            return; // overview has no mode to toggle
+            return; // overview has no views to cycle
         }
-        if (c == Cat::Cpu)
+        int vc = g_ui.tab < static_cast<int>(g_tabViewCount.size()) ? g_tabViewCount[g_ui.tab] : 1;
+        if (vc <= 1)
         {
-            g_ui.cpuLogical = !g_ui.cpuLogical;
+            g_ui.msg = std::string("No thermal sensors for ") + catLabel(c);
             return;
         }
-        bool goingToTemp = !g_ui.showTemp[static_cast<int>(c)];
-        bool hasTemp = g_ui.tab < static_cast<int>(g_tabHasTemp.size()) && g_tabHasTemp[g_ui.tab];
-        if (goingToTemp && !hasTemp)
-        {
-            // Refuse to switch to a temperature view that has no sensor behind it.
-            g_ui.msg = std::string("Temperature unavailable for ") + catLabel(c);
-            return;
-        }
-        g_ui.showTemp[static_cast<int>(c)] = goingToTemp;
+        g_ui.view[static_cast<int>(c)] = (g_ui.view[static_cast<int>(c)] + 1) % vc;
     }
 }
 
 // ---- graph rendering ------------------------------------------------------
 // One column per historical sample, right-aligned (newest at the right). Each column is a
 // vertical bar of eighth-blocks scaled into `height` rows and colored by its value.
+// Per-column bar levels (in eighths of a full-height bar) for a history, right-aligned. -1 marks a
+// column with no sample. `pct` receives the 0..100 fill fraction for coloring.
+void columnLevels(const std::deque<double>& h, double vmin, double vmax, int w, int height,
+                  std::vector<int>& eighths, std::vector<double>& pct)
+{
+    eighths.assign(w, -1);
+    pct.assign(w, 0.0);
+    if (vmax <= vmin)
+    {
+        vmax = vmin + 1;
+    }
+    for (int c = 0; c < w; ++c)
+    {
+        int fromRight = w - 1 - c;
+        if (static_cast<size_t>(fromRight) < h.size())
+        {
+            double v = h[h.size() - 1 - fromRight];
+            double frac = (v - vmin) / (vmax - vmin);
+            frac = frac < 0 ? 0 : frac > 1 ? 1 : frac;
+            eighths[c] = static_cast<int>(frac * height * 8 + 0.5);
+            pct[c] = frac * 100.0;
+        }
+    }
+}
+
+// One column per historical sample, right-aligned (newest at the right). Each column is a
+// vertical bar of eighth-blocks scaled into `height` rows and colored by its value. An optional
+// overlay series (e.g. swap) is drawn as a single-cell line in `ovColor` on top of the fill.
 std::vector<std::string> renderGraph(const std::deque<double>& h, double vmin, double vmax, int w,
-                                     int height, Ax ax)
+                                     int height, Ax ax, const std::deque<double>* ov = nullptr,
+                                     double ovMax = 100.0, const char* ovColor = BLUE)
 {
     if (w < 1)
     {
@@ -827,19 +887,12 @@ std::vector<std::string> renderGraph(const std::deque<double>& h, double vmin, d
         vmax = vmin + 1;
     }
 
-    std::vector<int> eighths(w, -1); // -1 = no sample for this column
-    std::vector<double> pct(w, 0.0);
-    for (int c = 0; c < w; ++c)
+    std::vector<int> eighths, ovE;
+    std::vector<double> pct, ovPct;
+    columnLevels(h, vmin, vmax, w, height, eighths, pct);
+    if (ov)
     {
-        int fromRight = w - 1 - c;
-        if (static_cast<size_t>(fromRight) < h.size())
-        {
-            double v = h[h.size() - 1 - fromRight];
-            double frac = (v - vmin) / (vmax - vmin);
-            frac = frac < 0 ? 0 : frac > 1 ? 1 : frac;
-            eighths[c] = static_cast<int>(frac * height * 8 + 0.5);
-            pct[c] = frac * 100.0;
-        }
+        columnLevels(*ov, vmin, ovMax, w, height, ovE, ovPct);
     }
 
     std::vector<std::string> rows;
@@ -863,6 +916,18 @@ std::vector<std::string> renderGraph(const std::deque<double>& h, double vmin, d
         std::string row = std::string(GREY) + padLeft(label, 8) + " │" + RESET;
         for (int c = 0; c < w; ++c)
         {
+            // Overlay line: draw its marker in the cell that holds the overlay's top.
+            if (ov && ovE[c] >= 0)
+            {
+                int top = (ovE[c] + 7) / 8 - 1; // topmost occupied cell index from bottom
+                if (top == cellFromBottom)
+                {
+                    row += ovColor;
+                    row += BLOCKS[8];
+                    row += RESET;
+                    continue;
+                }
+            }
             if (eighths[c] < 0)
             {
                 row += ' ';
@@ -873,6 +938,40 @@ std::vector<std::string> renderGraph(const std::deque<double>& h, double vmin, d
             if (e == 0)
             {
                 row += ' ';
+            }
+            else
+            {
+                row += heatColor(pct[c]);
+                row += BLOCKS[e];
+                row += RESET;
+            }
+        }
+        rows.push_back(row);
+    }
+    return rows;
+}
+
+// A compact multi-row graph with no axis/border: each row is exactly `w` display columns wide, so
+// cells tile cleanly side by side. Used for the Task-Manager-style per-core grid.
+std::vector<std::string> miniGraph(const std::deque<double>& h, double vmin, double vmax, int w,
+                                   int height)
+{
+    std::vector<int> eighths;
+    std::vector<double> pct;
+    columnLevels(h, vmin, vmax, w, height, eighths, pct);
+    std::vector<std::string> rows;
+    rows.reserve(height);
+    for (int L = 0; L < height; ++L)
+    {
+        int cellFromBottom = height - 1 - L;
+        std::string row;
+        for (int c = 0; c < w; ++c)
+        {
+            int e = eighths[c] < 0 ? 0 : eighths[c] - cellFromBottom * 8;
+            e = e < 0 ? 0 : e > 8 ? 8 : e;
+            if (e == 0)
+            {
+                row += (L == height - 1) ? std::string(TRACK) + "▁" + RESET : std::string(" ");
             }
             else
             {
@@ -1217,24 +1316,36 @@ void renderSettings(const std::map<DeviceId, DevView>& devs, std::vector<std::st
 
     struct Item
     {
-        bool net;
+        SetItem::Kind kind;
+        std::string section; // header this row lives under
         std::string key;
         std::string label;
         std::string extra;
-        bool shown;
+        bool on;
     };
     std::vector<Item> items;
-    for (auto& kv : devs) // network first
+
+    // Display options first.
+    bool grid = g_settings.cpuCoreStyle == "grid";
+    items.push_back(
+        {SetItem::Option, "Display options", "cpu_cores", "CPU per-core view",
+         grid ? "grid (Task Manager)" : "rows (sparklines)", grid});
+    bool swapFull = g_settings.swapScale == "fullness";
+    items.push_back(
+        {SetItem::Option, "Display options", "swap_scale", "Memory swap scale",
+         swapFull ? "fullness (% of swap)" : "vs RAM total", swapFull});
+
+    for (auto& kv : devs) // network
     {
         const DevView& d = kv.second;
         if (!d.info || d.info->id.kind != DeviceKind::Network)
         {
             continue;
         }
-        items.push_back({true, d.info->name, d.info->name, netLinkUp(d) ? "link up" : "link down",
-                         showNet(d)});
+        items.push_back({SetItem::Net, "Network interfaces", d.info->name, d.info->name,
+                         netLinkUp(d) ? "link up" : "link down", showNet(d)});
     }
-    for (auto& kv : devs) // then storage
+    for (auto& kv : devs) // storage
     {
         const DevView& d = kv.second;
         if (!d.info || d.info->id.kind != DeviceKind::Storage)
@@ -1242,8 +1353,8 @@ void renderSettings(const std::map<DeviceId, DevView>& devs, std::vector<std::st
             continue;
         }
         std::string bsd = attr(*d.info, "bsd_name");
-        items.push_back({false, storageKey(d), d.info->name, bsd.empty() ? "" : "(" + bsd + ")",
-                         showStorage(d)});
+        items.push_back({SetItem::Storage, "Storage devices", storageKey(d), d.info->name,
+                         bsd.empty() ? "" : "(" + bsd + ")", showStorage(d)});
     }
 
     if (g_ui.setSel >= static_cast<int>(items.size()))
@@ -1261,39 +1372,139 @@ void renderSettings(const std::map<DeviceId, DevView>& devs, std::vector<std::st
 
     g_setItems.clear();
     int idx = 0;
-    bool netHeader = false, stoHeader = false;
+    std::string section;
     for (const Item& it : items)
     {
-        if (it.net && !netHeader)
+        if (it.section != section)
         {
-            push(std::string("  ") + HEAD + BOLD + "Network interfaces" + RESET);
-            netHeader = true;
-        }
-        if (!it.net && !stoHeader)
-        {
-            if (netHeader)
+            if (!section.empty())
             {
                 push();
             }
-            push(std::string("  ") + HEAD + BOLD + "Storage devices" + RESET);
-            stoHeader = true;
+            push(std::string("  ") + HEAD + BOLD + it.section + RESET);
+            section = it.section;
         }
         bool sel = idx == g_ui.setSel;
         std::string cursor = sel ? std::string(CYAN) + "  > " + RESET : "    ";
-        std::string box = it.shown ? std::string(GREEN) + "[x]" + RESET
-                                   : std::string(GREY) + "[ ]" + RESET;
+        std::string box = it.on ? std::string(GREEN) + "[x]" + RESET
+                                : std::string(GREY) + "[ ]" + RESET;
         std::string name = sel ? std::string(BOLD) + truncPad(it.label, 26) + RESET
                                : truncPad(it.label, 26);
         push(cursor + box + " " + name + "  " + GREY + it.extra + RESET);
-        g_setItems.push_back({it.net, it.key, it.shown});
+        g_setItems.push_back({it.kind, it.key, it.on});
         ++idx;
-    }
-    if (items.empty())
-    {
-        push(std::string("  ") + GREY + "no network or storage devices" + RESET);
     }
     push();
     push(std::string("  ") + GREY + "↑/↓ select · Space toggle · saved to " + g_configPath + RESET);
+}
+
+// The CPU per-core view: either one sparkline row per core, or a Task-Manager-style grid of mini
+// graphs, per the cpu_cores setting.
+void renderCores(const DevView& cpu, int cols, int gh, std::vector<std::string>& body)
+{
+    auto push = [&](const std::string& s = "") { body.push_back(s); };
+    std::vector<const Reading*> cores;
+    for (const Reading* r : cpu.readings)
+    {
+        if (r->quantity == Quantity::Load && r->channel.rfind("Core", 0) == 0)
+        {
+            cores.push_back(r);
+        }
+    }
+    std::sort(cores.begin(), cores.end(), [](const Reading* a, const Reading* b)
+              { return coreIndex(a->channel) < coreIndex(b->channel); });
+    int n = static_cast<int>(cores.size());
+    if (n == 0)
+    {
+        push(std::string("  ") + GREY + "no per-core data" + RESET);
+        return;
+    }
+
+    if (g_settings.cpuCoreStyle != "grid")
+    {
+        int sw = std::max(10, std::min(cols - 22, 200));
+        for (const Reading* r : cores)
+        {
+            char pctbuf[12];
+            std::snprintf(pctbuf, sizeof(pctbuf), "%5.1f%%", r->value);
+            push("  " + truncPad(r->channel, 8) + " " + sparkline(histFor(r), 0, 100, sw) + " " +
+                 heatColor(r->value) + pctbuf + RESET);
+        }
+        return;
+    }
+
+    // Grid: choose up to 4 columns, each at least 12 display cells wide.
+    const int gap = 2;
+    int avail = cols - 2;
+    int gcols = 1;
+    for (int k = std::min(4, n); k >= 1; --k)
+    {
+        if ((avail - (k - 1) * gap) / k >= 12)
+        {
+            gcols = k;
+            break;
+        }
+    }
+    int cellW = std::max(8, (avail - (gcols - 1) * gap) / gcols);
+    int gridRows = (n + gcols - 1) / gcols;
+    int cellH = std::max(2, std::min(5, gh / std::max(1, gridRows) - 1));
+
+    for (int gr = 0; gr < gridRows; ++gr)
+    {
+        // Label line: "Core N  42%" per cell, padded to the cell width.
+        std::string labelLine = "  ";
+        for (int gc = 0; gc < gcols; ++gc)
+        {
+            int idx = gr * gcols + gc;
+            std::string cell;
+            if (idx < n)
+            {
+                const Reading* r = cores[idx];
+                char pctbuf[16];
+                std::snprintf(pctbuf, sizeof(pctbuf), "%.0f%%", r->value);
+                int disp = static_cast<int>(r->channel.size()) + 2 + static_cast<int>(strlen(pctbuf));
+                cell = std::string(BOLD) + r->channel + RESET + "  " + heatColor(r->value) + pctbuf +
+                       RESET;
+                if (disp < cellW)
+                {
+                    cell += std::string(cellW - disp, ' ');
+                }
+            }
+            else
+            {
+                cell = std::string(cellW, ' ');
+            }
+            labelLine += cell;
+            if (gc < gcols - 1)
+            {
+                labelLine += std::string(gap, ' ');
+            }
+        }
+        push(labelLine);
+
+        // Graph lines: mini graphs composed side by side (each exactly cellW display columns).
+        std::vector<std::vector<std::string>> g(gcols);
+        for (int gc = 0; gc < gcols; ++gc)
+        {
+            int idx = gr * gcols + gc;
+            g[gc] = idx < n ? miniGraph(histFor(cores[idx]), 0, 100, cellW, cellH)
+                            : std::vector<std::string>(cellH, std::string(cellW, ' '));
+        }
+        for (int L = 0; L < cellH; ++L)
+        {
+            std::string line = "  ";
+            for (int gc = 0; gc < gcols; ++gc)
+            {
+                line += g[gc][L];
+                if (gc < gcols - 1)
+                {
+                    line += std::string(gap, ' ');
+                }
+            }
+            push(line);
+        }
+        push();
+    }
 }
 
 void render(const Snapshot& snap)
@@ -1315,7 +1526,7 @@ void render(const Snapshot& snap)
             {"p / Shift+Tab", "previous tab"},
             {"Left / Right", "switch tab"},
             {"1 - 9", "jump to tab"},
-            {"t / Space", "toggle mode (CPU: overall/logical, others: load/temp)"},
+            {"t / Space", "cycle views: load → per-core (CPU) → each thermal graph"},
             {"Up / Down", "move selection (Settings tab)"},
             {"h / ?", "toggle this help"},
             {"q", "quit"},
@@ -1395,20 +1606,26 @@ void render(const Snapshot& snap)
     }
 
     g_tabCats.clear();
-    g_tabHasTemp.clear();
+    g_tabViewCount.clear();
     for (const Tab& t : tabs)
     {
         g_tabCats.push_back(t.cat);
-        bool hasTemp = false;
-        for (const DevView* d : t.devs)
+        int vc = 1;
+        if (t.cat != Cat::Overview && t.cat != Cat::Settings)
         {
-            if (find(*d, Quantity::Temperature, ""))
+            vc = t.cat == Cat::Cpu ? 2 : 1; // CPU: overall + cores; others: one primary view
+            for (const DevView* d : t.devs)
             {
-                hasTemp = true;
-                break;
+                for (const Reading* r : d->readings)
+                {
+                    if (r->quantity == Quantity::Temperature)
+                    {
+                        ++vc; // one cyclable thermal graph per sensor
+                    }
+                }
             }
         }
-        g_tabHasTemp.push_back(hasTemp);
+        g_tabViewCount.push_back(vc);
     }
     if (devs.empty())
     {
@@ -1450,51 +1667,102 @@ void render(const Snapshot& snap)
     }
     else
     {
-        bool temp = g_ui.showTemp[static_cast<int>(tab.cat)];
+        const DevView& first = *tab.devs.front();
+        bool multi = tab.devs.size() > 1;
 
-        // Tab title line with mode indicator.
-        std::string mode;
+        // Build the cyclable views for this tab: primary load view(s), then one per thermal sensor.
+        struct View
+        {
+            enum Kind
+            {
+                Overall,
+                Cores,
+                Primary,
+                Temp
+            } kind;
+            const Reading* temp = nullptr;
+            std::string label;
+        };
+        std::vector<View> views;
         if (tab.cat == Cat::Cpu)
         {
-            mode = g_ui.cpuLogical ? "Logical processors" : "Overall";
+            views.push_back({View::Overall, nullptr, "Overall"});
+            views.push_back({View::Cores, nullptr, "Cores"});
         }
         else
         {
-            mode = temp ? "Temperature" : "Load";
+            views.push_back({View::Primary, nullptr, "Load"});
         }
-        const DevView& first = *tab.devs.front();
-        std::string devName = first.info ? first.info->name : catLabel(tab.cat);
-        push(std::string("  ") + HEAD + BOLD + catLabel(tab.cat) + RESET + "  " + devName + "   " +
-             GREY + "[ " + RESET + CYAN + mode + RESET + GREY + " ]" + RESET);
-        push();
-
-        if (tab.cat == Cat::Cpu && g_ui.cpuLogical)
+        for (const DevView* d : tab.devs)
         {
-            // Per-logical-processor sparklines.
-            std::vector<const Reading*> cores;
-            for (const Reading* r : first.readings)
+            for (const Reading* r : d->readings)
             {
-                if (r->quantity == Quantity::Load && r->channel.rfind("Core", 0) == 0)
+                if (r->quantity == Quantity::Temperature)
                 {
-                    cores.push_back(r);
+                    std::string lbl = "Temp: " + ((multi && d->info) ? d->info->name + " " : "") +
+                                      r->channel;
+                    views.push_back({View::Temp, r, lbl});
                 }
             }
-            std::sort(cores.begin(), cores.end(), [](const Reading* a, const Reading* b)
-                      { return coreIndex(a->channel) < coreIndex(b->channel); });
-            int sw = std::max(10, std::min(cols - 22, 200));
-            for (const Reading* r : cores)
-            {
-                char pctbuf[12];
-                std::snprintf(pctbuf, sizeof(pctbuf), "%5.1f%%", r->value);
-                push("  " + truncPad(r->channel, 8) + " " + sparkline(histFor(r), 0, 100, sw) + " " +
-                     heatColor(r->value) + pctbuf + RESET);
-            }
         }
-        else if (tab.devs.size() == 1)
+        int& vi = g_ui.view[static_cast<int>(tab.cat)];
+        if (vi >= static_cast<int>(views.size()) || vi < 0)
         {
-            // Single device: full-height graph plus a stat line.
-            Series s = seriesFor(tab.cat, first, temp);
-            std::vector<std::string> g = renderGraph(s.h, s.vmin, s.vmax, gw, gh, s.ax);
+            vi = 0;
+        }
+        const View& v = views[vi];
+
+        // Tab title with the current view name (and position when there is more than one).
+        std::string devName = first.info ? first.info->name : catLabel(tab.cat);
+        std::string pos = views.size() > 1 ? std::string("   ") + GREY + "(" +
+                                                 std::to_string(vi + 1) + "/" +
+                                                 std::to_string(views.size()) + ")" + RESET
+                                           : std::string();
+        push(std::string("  ") + HEAD + BOLD + catLabel(tab.cat) + RESET + "  " + devName + "   " +
+             GREY + "[ " + RESET + CYAN + v.label + RESET + GREY + " ]" + RESET + pos);
+        push();
+
+        if (v.kind == View::Temp)
+        {
+            // Thermal history graph for this one sensor.
+            std::vector<std::string> g = renderGraph(histFor(v.temp), 0, 100, gw, gh, Ax::Temp);
+            for (std::string& row : g)
+            {
+                push("  " + row);
+            }
+            char b[32];
+            std::snprintf(b, sizeof(b), "%.0f°C", v.temp->value);
+            push(std::string("  ") + std::string(9, ' ') + GREY + "now " + RESET + b);
+        }
+        else if (v.kind == View::Cores)
+        {
+            renderCores(first, cols, gh, body);
+        }
+        else if (!multi)
+        {
+            // Single device: full-height graph plus a stat line. Memory overlays swap in blue.
+            std::deque<double> swapPct;
+            const std::deque<double>* ov = nullptr;
+            if (tab.cat == Cat::Mem)
+            {
+                // Swap overlay scale is a setting: "fullness" (% of swap total, stays visible since
+                // swap is tiny next to RAM) or "ram" (% of physical RAM, same axis as usage).
+                const Reading* swapUsed = find(first, Quantity::DataVolume, "Swap Used");
+                const Reading* denom = g_settings.swapScale == "ram"
+                                           ? find(first, Quantity::DataVolume, "Total")
+                                           : find(first, Quantity::DataVolume, "Swap Total");
+                if (swapUsed && denom && denom->value > 0)
+                {
+                    for (double bytes : histFor(swapUsed))
+                    {
+                        swapPct.push_back(bytes / denom->value * 100.0);
+                    }
+                    ov = &swapPct;
+                }
+            }
+            Series s = seriesFor(tab.cat, first, false);
+            std::vector<std::string> g = renderGraph(s.h, s.vmin, s.vmax, gw, gh, s.ax, ov, 100.0,
+                                                     BLUE);
             for (std::string& row : g)
             {
                 push("  " + row);
@@ -1519,16 +1787,26 @@ void render(const Snapshot& snap)
                 stat += opt("clock", clk, "%.0f MHz") + opt("temp", tp, "%.0f°C") +
                         opt("power", pw, "%.0f W");
             }
+            if (ov)
+            {
+                const Reading* swapUsed = find(first, Quantity::DataVolume, "Swap Used");
+                const Reading* swapTotal = find(first, Quantity::DataVolume, "Swap Total");
+                stat += std::string(GREY) + "  swap " + RESET + BLUE +
+                        bytesSize(swapUsed ? swapUsed->value : 0.0) + RESET;
+                if (swapTotal)
+                {
+                    stat += std::string(GREY) + " / " + RESET + bytesSize(swapTotal->value);
+                }
+            }
             push(stat);
         }
         else
         {
             // Multiple devices in one category: one sparkline row each.
-            // Row chrome is 31 cols ("  " + name[18] + " " + " " + value[9]); keep a 1-col margin.
             int sw = std::max(10, std::min(cols - 32, 200));
             for (const DevView* d : tab.devs)
             {
-                Series s = seriesFor(tab.cat, *d, temp);
+                Series s = seriesFor(tab.cat, *d, false);
                 std::string name = d->info ? d->info->name : "?";
                 push("  " + truncPad(name, 18) + " " + sparkline(s.h, s.vmin, s.vmax, sw) + " " +
                      padLeft(curLabel(s), 9));
