@@ -1,0 +1,181 @@
+name: Release
+
+# Cut a release by pushing a version tag, e.g.:
+#   git tag v0.1.0 && git push origin v0.1.0
+# The workflow builds all three deliverables (console monitor, python
+# webserver, and the SDK: static lib + headers) for every target and
+# publishes them as downloadable assets on a GitHub Release.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+# Version consumed by the PawnIO signed-module release (must match the
+# third_party/pawnio-modules submodule pin). Both Intel and AMD modules
+# are bundled with the Windows x64 artifacts so the tools work on either CPU.
+env:
+  PAWNIO_VERSION: "0.1.6"
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+            windows: true
+            msvc_arch: amd64
+            pawnio: true
+          - name: windows-arm64
+            os: windows-latest
+            windows: true
+            msvc_arch: amd64_arm64
+            pawnio: false
+          - name: linux-x64
+            os: ubuntu-latest
+            windows: false
+          - name: macos-arm64
+            os: macos-14
+            windows: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        # Submodules hold only PawnIO Pawn *sources* (not needed to compile;
+        # the signed .bin modules are downloaded below), so skip them.
+
+      - name: Set version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+
+      # --- Windows toolchain: MSVC dev env for the target architecture -------
+      - name: Set up MSVC (${{ matrix.msvc_arch }})
+        if: matrix.windows
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.msvc_arch }}
+
+      - name: Install Ninja (Windows)
+        if: matrix.windows
+        uses: seanmiddleditch/gha-setup-ninja@v6
+
+      # --- Configure + build all three deliverables -------------------------
+      # Ninja (single-config) on Windows so output paths are predictable and
+      # match the cross-compiled architecture; default Makefiles elsewhere.
+      - name: Build (Windows)
+        if: matrix.windows
+        shell: bash
+        run: |
+          set -euxo pipefail
+          GEN=(-G Ninja)
+          cmake -S console   -B console/build   "${GEN[@]}" -DCMAKE_BUILD_TYPE=Release
+          cmake --build console/build
+          cmake -S webserver -B webserver/build "${GEN[@]}" -DCMAKE_BUILD_TYPE=Release
+          cmake --build webserver/build
+          cmake -S .         -B build-sdk       "${GEN[@]}" -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-sdk
+
+      - name: Build (Unix)
+        if: ${{ !matrix.windows }}
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S console   -B console/build   -DCMAKE_BUILD_TYPE=Release
+          cmake --build console/build -j
+          cmake -S webserver -B webserver/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build webserver/build -j
+          cmake -S .         -B build-sdk       -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-sdk -j
+
+      # --- Fetch the signed PawnIO modules (Windows x64 only) ---------------
+      # CPU temperature/RAPL power on Intel & AMD needs a signed Pawn module
+      # loaded at runtime. Bundle both so the tool works on either vendor.
+      - name: Fetch PawnIO modules
+        if: matrix.pawnio
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ver="${PAWNIO_VERSION}"
+          url="https://github.com/namazso/PawnIO.Modules/releases/download/${ver}/release_${ver//./_}.zip"
+          curl -fL "$url" -o pawnio.zip
+          mkdir -p pawnio_extract
+          ( cd pawnio_extract && cmake -E tar xf ../pawnio.zip )
+          # Collect both modules into a staging folder (bundled with x64 builds).
+          mkdir -p pawnio_modules
+          find pawnio_extract -name IntelMSR.bin    -exec cp {} pawnio_modules/ \;
+          find pawnio_extract -name AMDFamily17.bin -exec cp {} pawnio_modules/ \;
+          ls -l pawnio_modules
+
+      # --- Assemble the three release packages ------------------------------
+      - name: Package
+        shell: bash
+        run: |
+          set -euxo pipefail
+          V="${VERSION}"
+          T="${{ matrix.name }}"
+          docs=(LICENSE.md LICENSING.md NOTICE.md README.md)
+
+          # 1) Console monitor
+          cpkg="idimus_monitor-${V}-${T}"
+          mkdir -p "pkg/${cpkg}"
+          find console/build -maxdepth 4 \( -name 'idimus_monitor' -o -name 'idimus_monitor.exe' \) \
+            | head -n1 | xargs -I{} cp {} "pkg/${cpkg}/"
+          cp "${docs[@]}" "pkg/${cpkg}/"
+          if [ -d pawnio_modules ]; then cp -r pawnio_modules "pkg/${cpkg}/modules"; fi
+
+          # 2) Python webserver (assembled dist/: shared lib + server + web assets)
+          wpkg="idimus_webserver-${V}-${T}"
+          mkdir -p "pkg/${wpkg}"
+          cp -r webserver/build/dist/. "pkg/${wpkg}/"
+          cp "${docs[@]}" "pkg/${wpkg}/"
+          if [ -d pawnio_modules ]; then cp -r pawnio_modules "pkg/${wpkg}/modules"; fi
+
+          # 3) SDK: static library + public headers
+          spkg="idimus_hw-sdk-${V}-${T}"
+          mkdir -p "pkg/${spkg}/lib"
+          cp -r include "pkg/${spkg}/include"
+          find build-sdk -maxdepth 3 \( -name 'idimus_hw.lib' -o -name 'libidimus_hw.a' \) \
+            | head -n1 | xargs -I{} cp {} "pkg/${spkg}/lib/"
+          cp "${docs[@]}" "pkg/${spkg}/"
+
+          # Zip each package (cmake tar is available on every runner).
+          mkdir -p dist
+          for d in "${cpkg}" "${wpkg}" "${spkg}"; do
+            ( cd pkg && cmake -E tar cf "../dist/${d}.zip" --format=zip "${d}" )
+          done
+          ls -l dist
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: dist/*.zip
+          if-no-files-found: error
+
+  # --- Publish the GitHub Release with all artifacts attached --------------
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List assets
+        run: ls -lR artifacts
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: artifacts/*.zip
