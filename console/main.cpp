@@ -872,7 +872,8 @@ void columnLevels(const std::deque<double>& h, double vmin, double vmax, int w, 
 // overlay series (e.g. swap) is drawn as a single-cell line in `ovColor` on top of the fill.
 std::vector<std::string> renderGraph(const std::deque<double>& h, double vmin, double vmax, int w,
                                      int height, Ax ax, const std::deque<double>* ov = nullptr,
-                                     double ovMax = 100.0, const char* ovColor = BLUE)
+                                     double ovMax = 100.0, const char* ovColor = BLUE,
+                                     int labelW = 8)
 {
     if (w < 1)
     {
@@ -913,7 +914,7 @@ std::vector<std::string> renderGraph(const std::deque<double>& h, double vmin, d
         {
             label = axLabel(ax, (vmin + vmax) / 2);
         }
-        std::string row = std::string(GREY) + padLeft(label, 8) + " │" + RESET;
+        std::string row = std::string(GREY) + padLeft(label, labelW) + " │" + RESET;
         for (int c = 0; c < w; ++c)
         {
             // Overlay line: draw its marker in the cell that holds the overlay's top.
@@ -1761,13 +1762,20 @@ void render(const Snapshot& snap)
                 }
             }
             Series s = seriesFor(tab.cat, first, false);
-            std::vector<std::string> g = renderGraph(s.h, s.vmin, s.vmax, gw, gh, s.ax, ov, 100.0,
-                                                     BLUE);
+            // Size the left axis gutter to the widest tick label so rate labels
+            // like "125.0 MB/s" don't overrun the reserved margin and wrap the line.
+            int lw = static_cast<int>(axLabel(s.ax, s.vmax).size());
+            lw = std::max(lw, static_cast<int>(axLabel(s.ax, (s.vmin + s.vmax) / 2).size()));
+            lw = std::max(lw, static_cast<int>(axLabel(s.ax, s.vmin).size()));
+            lw = std::max(lw, 3);
+            int ggw = std::max(20, std::min(cols - (4 + lw), 240)); // graph width for this gutter
+            std::vector<std::string> g =
+                renderGraph(s.h, s.vmin, s.vmax, ggw, gh, s.ax, ov, 100.0, BLUE, lw);
             for (std::string& row : g)
             {
                 push("  " + row);
             }
-            std::string stat = std::string("  ") + std::string(9, ' ') + GREY + "now " + RESET +
+            std::string stat = std::string("  ") + std::string(lw, ' ') + GREY + "now " + RESET +
                                curLabel(s);
             if (tab.cat == Cat::Cpu)
             {
