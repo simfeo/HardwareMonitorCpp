@@ -521,7 +521,8 @@ enum class Ax
 {
     Pct,
     Temp,
-    Rate
+    Rate,
+    Bytes
 };
 
 std::string axLabel(Ax ax, double v)
@@ -529,6 +530,10 @@ std::string axLabel(Ax ax, double v)
     if (ax == Ax::Rate)
     {
         return bytesRate(v);
+    }
+    if (ax == Ax::Bytes)
+    {
+        return bytesSize(v);
     }
     char b[24];
     std::snprintf(b, sizeof(b), "%.0f", v);
@@ -1082,12 +1087,27 @@ Series seriesFor(Cat cat, const DevView& d, bool temp)
         return s;
     }
 
+    if (cat == Cat::Mem) // absolute used bytes on a 0..total axis
+    {
+        const Reading* used = find(d, Quantity::DataVolume, "Used");
+        const Reading* total = find(d, Quantity::DataVolume, "Total");
+        if (used && total && total->value > 0)
+        {
+            s.ok = true;
+            s.h = histFor(used);
+            s.cur = used->value;
+            s.vmin = 0;
+            s.vmax = total->value;
+            s.ax = Ax::Bytes;
+        }
+        return s;
+    }
+
     const Reading* r = nullptr;
     switch (cat)
     {
         case Cat::Cpu: r = find(d, Quantity::Load, "Total"); break;
         case Cat::Gpu: r = find(d, Quantity::Load, "Core"); break;
-        case Cat::Mem: r = find(d, Quantity::Load, "Usage"); break;
         case Cat::Disk: r = find(d, Quantity::Load, "Activity"); break;
         case Cat::Bat: r = find(d, Quantity::Level, "Charge"); break;
         default: break;
@@ -1113,6 +1133,10 @@ std::string curLabel(const Series& s)
     if (s.ax == Ax::Rate)
     {
         return bytesRate(s.cur);
+    }
+    if (s.ax == Ax::Bytes)
+    {
+        return bytesSize(s.cur);
     }
     char b[32];
     std::snprintf(b, sizeof(b), s.ax == Ax::Temp ? "%.0f°C" : "%.0f%%", s.cur);
@@ -1742,26 +1766,42 @@ void render(const Snapshot& snap)
         else if (!multi)
         {
             // Single device: full-height graph plus a stat line. Memory overlays swap in blue.
-            std::deque<double> swapPct;
+            Series s = seriesFor(tab.cat, first, false);
+            std::deque<double> swapOv;
             const std::deque<double>* ov = nullptr;
+            double ovMax = s.vmax;
             if (tab.cat == Cat::Mem)
             {
-                // Swap overlay scale is a setting: "fullness" (% of swap total, stays visible since
-                // swap is tiny next to RAM) or "ram" (% of physical RAM, same axis as usage).
+                // Swap overlay scale is a setting: "fullness" (swap used vs its own total, so it
+                // stays visible even though swap is tiny next to RAM) or "ram" (absolute bytes on
+                // the same axis as usage).
                 const Reading* swapUsed = find(first, Quantity::DataVolume, "Swap Used");
-                const Reading* denom = g_settings.swapScale == "ram"
-                                           ? find(first, Quantity::DataVolume, "Total")
-                                           : find(first, Quantity::DataVolume, "Swap Total");
-                if (swapUsed && denom && denom->value > 0)
+                if (g_settings.swapScale == "ram")
                 {
-                    for (double bytes : histFor(swapUsed))
+                    if (swapUsed)
                     {
-                        swapPct.push_back(bytes / denom->value * 100.0);
+                        for (double bytes : histFor(swapUsed))
+                        {
+                            swapOv.push_back(bytes);
+                        }
+                        ov = &swapOv;
+                        ovMax = s.vmax; // share the RAM byte axis
                     }
-                    ov = &swapPct;
+                }
+                else
+                {
+                    const Reading* swapTotal = find(first, Quantity::DataVolume, "Swap Total");
+                    if (swapUsed && swapTotal && swapTotal->value > 0)
+                    {
+                        for (double bytes : histFor(swapUsed))
+                        {
+                            swapOv.push_back(bytes / swapTotal->value);
+                        }
+                        ov = &swapOv;
+                        ovMax = 1.0; // 0..1 fullness fills the graph height
+                    }
                 }
             }
-            Series s = seriesFor(tab.cat, first, false);
             // Size the left axis gutter to the widest tick label so rate labels
             // like "125.0 MB/s" don't overrun the reserved margin and wrap the line.
             int lw = static_cast<int>(axLabel(s.ax, s.vmax).size());
@@ -1770,7 +1810,7 @@ void render(const Snapshot& snap)
             lw = std::max(lw, 3);
             int ggw = std::max(20, std::min(cols - (4 + lw), 240)); // graph width for this gutter
             std::vector<std::string> g =
-                renderGraph(s.h, s.vmin, s.vmax, ggw, gh, s.ax, ov, 100.0, BLUE, lw);
+                renderGraph(s.h, s.vmin, s.vmax, ggw, gh, s.ax, ov, ovMax, BLUE, lw);
             for (std::string& row : g)
             {
                 push("  " + row);
@@ -1794,6 +1834,21 @@ void render(const Snapshot& snap)
                 };
                 stat += opt("clock", clk, "%.0f MHz") + opt("temp", tp, "%.0f°C") +
                         opt("power", pw, "%.0f W");
+            }
+            if (tab.cat == Cat::Mem)
+            {
+                const Reading* total = find(first, Quantity::DataVolume, "Total");
+                const Reading* use = find(first, Quantity::Load, "Usage");
+                if (total)
+                {
+                    stat += std::string(GREY) + " / " + RESET + bytesSize(total->value);
+                }
+                if (use)
+                {
+                    char b[16];
+                    std::snprintf(b, sizeof(b), "%.0f%%", use->value);
+                    stat += std::string(GREY) + "  (" + RESET + b + GREY + ")" + RESET;
+                }
             }
             if (ov)
             {
