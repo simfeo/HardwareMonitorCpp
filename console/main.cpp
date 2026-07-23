@@ -170,6 +170,8 @@ enum Key
     K_HELP,
     K_UP,
     K_DOWN,
+    K_ZOOM_OUT, // '-' : longer span, more time per graph column
+    K_ZOOM_IN,  // '=' : shorter span, back toward live
     K_TAB1 = 10 // K_TAB1 + n selects tab n
 };
 
@@ -195,6 +197,10 @@ int keyForChar(int c)
         case '\r':
         case '\n':
         case ' ': return K_TOGGLE;
+        case '-':
+        case '_': return K_ZOOM_OUT;
+        case '=':
+        case '+': return K_ZOOM_IN;
         default: break;
     }
     if (c >= '1' && c <= '9')
@@ -296,9 +302,49 @@ struct Settings
     std::map<std::string, bool> storage;  // key: stable device id (BSD name where available)
     std::string cpuCoreStyle = "rows";    // "rows" (one sparkline each) or "grid" (Task-Manager)
     std::string swapScale = "fullness";   // "fullness" (% of swap total) or "ram" (% of RAM total)
+    int zoom = 0;                         // index into g_zoomLevels (seconds per graph column)
 };
 Settings g_settings;
 std::string g_configPath;
+
+// Zoom levels expressed as seconds of real time per graph column. Index 0 is "live" (one sample per
+// column). '-' steps toward the end (coarser/longer), '=' steps back toward live.
+const int g_zoomLevels[] = {1, 5, 15, 30, 60, 300};
+constexpr int g_zoomCount = static_cast<int>(sizeof(g_zoomLevels) / sizeof(g_zoomLevels[0]));
+
+int zoomSecPerCol()
+{
+    int z = g_settings.zoom;
+    if (z < 0)
+    {
+        z = 0;
+    }
+    if (z >= g_zoomCount)
+    {
+        z = g_zoomCount - 1;
+    }
+    return g_zoomLevels[z];
+}
+
+// Human label for the current zoom, e.g. "live", "15s/col", "5m/col".
+std::string zoomLabel()
+{
+    if (g_settings.zoom <= 0)
+    {
+        return "live";
+    }
+    int s = zoomSecPerCol();
+    char b[24];
+    if (s >= 60)
+    {
+        std::snprintf(b, sizeof(b), "%dm/col", s / 60);
+    }
+    else
+    {
+        std::snprintf(b, sizeof(b), "%ds/col", s);
+    }
+    return b;
+}
 
 // Directory holding the running executable, so the config can live right next to it.
 std::string exeDir()
@@ -385,6 +431,10 @@ void loadSettings(const std::string& path)
             {
                 g_settings.swapScale = val;
             }
+            else if (key == "zoom")
+            {
+                g_settings.zoom = std::atoi(val.c_str());
+            }
             continue;
         }
         bool b = val == "true" || val == "1" || val == "yes" || val == "on";
@@ -415,6 +465,7 @@ void saveSettings()
     f << "options:\n";
     f << "  cpu_cores: " << g_settings.cpuCoreStyle << "\n";
     f << "  swap_scale: " << g_settings.swapScale << "\n";
+    f << "  zoom: " << g_settings.zoom << "\n";
     f << "\nnetwork:\n";
     for (const auto& kv : g_settings.net)
     {
@@ -541,8 +592,65 @@ std::string axLabel(Ax ax, double v)
 }
 
 // ---- history --------------------------------------------------------------
-constexpr size_t MAX_HIST = 1024;
+constexpr size_t MAX_HIST = 8192; // ~2.2 h at the default 1 s interval; covers the coarse zooms
 std::map<std::string, std::deque<double>> g_hist;
+double g_interval = 1.0; // seconds between polls; set in main, used to convert zoom to samples
+
+enum class Agg
+{
+    Avg,
+    Peak,
+    Min
+};
+
+// How many raw samples fall in one graph column at the current zoom (1 == live, no bucketing).
+int columnSamples()
+{
+    if (g_settings.zoom <= 0)
+    {
+        return 1;
+    }
+    return std::max(1, static_cast<int>(std::lround(zoomSecPerCol() / g_interval)));
+}
+
+// Downsample history into `w` columns, aggregating each `per`-sample bucket. Newest sample stays on
+// the right. `per <= 1` returns the raw history, so live zoom behaves exactly as before.
+std::deque<double> bucketHistory(const std::deque<double>& h, int w, int per, Agg agg)
+{
+    if (per <= 1 || w <= 0 || h.empty())
+    {
+        return h;
+    }
+    std::deque<double> out;
+    int n = static_cast<int>(h.size());
+    for (int end = n; end > 0 && static_cast<int>(out.size()) < w; end -= per)
+    {
+        int start = std::max(0, end - per);
+        double acc = h[start];
+        for (int i = start + 1; i < end; ++i)
+        {
+            double v = h[i];
+            if (agg == Agg::Peak)
+            {
+                acc = std::max(acc, v);
+            }
+            else if (agg == Agg::Min)
+            {
+                acc = std::min(acc, v);
+            }
+            else
+            {
+                acc += v;
+            }
+        }
+        if (agg == Agg::Avg)
+        {
+            acc /= (end - start);
+        }
+        out.push_front(acc);
+    }
+    return out;
+}
 
 std::string histKey(const DeviceId& d, Quantity q, const std::string& ch)
 {
@@ -741,7 +849,8 @@ struct SetItem
     {
         Net,     // network interface (toggle visibility)
         Storage, // storage device (toggle visibility)
-        Option   // a display option (toggle its value)
+        Option,  // a two-state display option (toggle its value)
+        Choice   // a multi-value option (cycles through a list on toggle)
     } kind;
     std::string key; // settings key to toggle
     bool on;         // current state (shown, or option enabled)
@@ -786,6 +895,23 @@ void handleKey(int k)
         {
             g_ui.tab = idx;
         }
+        return;
+    }
+
+    // Graph zoom works from any tab: '-' coarsens (more time per column), '=' returns toward live.
+    if (k == K_ZOOM_OUT || k == K_ZOOM_IN)
+    {
+        g_settings.zoom += (k == K_ZOOM_OUT ? 1 : -1);
+        if (g_settings.zoom < 0)
+        {
+            g_settings.zoom = 0;
+        }
+        if (g_settings.zoom >= g_zoomCount)
+        {
+            g_settings.zoom = g_zoomCount - 1;
+        }
+        g_ui.msg = std::string("Graph zoom: ") + zoomLabel();
+        saveSettings();
         return;
     }
 
@@ -875,10 +1001,18 @@ void columnLevels(const std::deque<double>& h, double vmin, double vmax, int w, 
 // One column per historical sample, right-aligned (newest at the right). Each column is a
 // vertical bar of eighth-blocks scaled into `height` rows and colored by its value. An optional
 // overlay series (e.g. swap) is drawn as a single-cell line in `ovColor` on top of the fill.
+// An overlay series drawn as a single-cell line on top of the fill (e.g. swap, or the per-bucket
+// peak/min lines). Each has its own axis max and color.
+struct Overlay
+{
+    const std::deque<double>* h = nullptr;
+    double max = 100.0;
+    const char* color = BLUE;
+};
+
 std::vector<std::string> renderGraph(const std::deque<double>& h, double vmin, double vmax, int w,
-                                     int height, Ax ax, const std::deque<double>* ov = nullptr,
-                                     double ovMax = 100.0, const char* ovColor = BLUE,
-                                     int labelW = 8)
+                                     int height, Ax ax,
+                                     const std::vector<Overlay>& overlays = {}, int labelW = 8)
 {
     if (w < 1)
     {
@@ -893,12 +1027,14 @@ std::vector<std::string> renderGraph(const std::deque<double>& h, double vmin, d
         vmax = vmin + 1;
     }
 
-    std::vector<int> eighths, ovE;
-    std::vector<double> pct, ovPct;
+    std::vector<int> eighths;
+    std::vector<double> pct;
     columnLevels(h, vmin, vmax, w, height, eighths, pct);
-    if (ov)
+    std::vector<std::vector<int>> ovE(overlays.size());
+    for (size_t i = 0; i < overlays.size(); ++i)
     {
-        columnLevels(*ov, vmin, ovMax, w, height, ovE, ovPct);
+        std::vector<double> ovPct;
+        columnLevels(*overlays[i].h, vmin, overlays[i].max, w, height, ovE[i], ovPct);
     }
 
     std::vector<std::string> rows;
@@ -922,17 +1058,26 @@ std::vector<std::string> renderGraph(const std::deque<double>& h, double vmin, d
         std::string row = std::string(GREY) + padLeft(label, labelW) + " │" + RESET;
         for (int c = 0; c < w; ++c)
         {
-            // Overlay line: draw its marker in the cell that holds the overlay's top.
-            if (ov && ovE[c] >= 0)
+            // Overlay lines: draw a marker in the cell that holds each overlay's top. Later overlays
+            // win when two lines land in the same cell.
+            const char* ovHit = nullptr;
+            for (size_t i = 0; i < overlays.size(); ++i)
             {
-                int top = (ovE[c] + 7) / 8 - 1; // topmost occupied cell index from bottom
-                if (top == cellFromBottom)
+                if (ovE[i][c] >= 0)
                 {
-                    row += ovColor;
-                    row += BLOCKS[8];
-                    row += RESET;
-                    continue;
+                    int top = (ovE[i][c] + 7) / 8 - 1; // topmost occupied cell index from bottom
+                    if (top == cellFromBottom)
+                    {
+                        ovHit = overlays[i].color;
+                    }
                 }
+            }
+            if (ovHit)
+            {
+                row += ovHit;
+                row += BLOCKS[8];
+                row += RESET;
+                continue;
             }
             if (eighths[c] < 0)
             {
@@ -1411,8 +1556,10 @@ void renderSettings(const std::map<DeviceId, DevView>& devs, std::vector<std::st
         }
         bool sel = idx == g_ui.setSel;
         std::string cursor = sel ? std::string(CYAN) + "  > " + RESET : "    ";
-        std::string box = it.on ? std::string(GREEN) + "[x]" + RESET
-                                : std::string(GREY) + "[ ]" + RESET;
+        std::string box = it.kind == SetItem::Choice
+                              ? std::string(CYAN) + " » " + RESET
+                              : (it.on ? std::string(GREEN) + "[x]" + RESET
+                                       : std::string(GREY) + "[ ]" + RESET);
         std::string name = sel ? std::string(BOLD) + truncPad(it.label, 26) + RESET
                                : truncPad(it.label, 26);
         push(cursor + box + " " + name + "  " + GREY + it.extra + RESET);
@@ -1448,11 +1595,13 @@ void renderCores(const DevView& cpu, int cols, int gh, std::vector<std::string>&
     if (g_settings.cpuCoreStyle != "grid")
     {
         int sw = std::max(10, std::min(cols - 22, 200));
+        int per = columnSamples();
         for (const Reading* r : cores)
         {
             char pctbuf[12];
             std::snprintf(pctbuf, sizeof(pctbuf), "%5.1f%%", r->value);
-            push("  " + truncPad(r->channel, 8) + " " + sparkline(histFor(r), 0, 100, sw) + " " +
+            std::deque<double> hB = bucketHistory(histFor(r), sw, per, Agg::Avg);
+            push("  " + truncPad(r->channel, 8) + " " + sparkline(hB, 0, 100, sw) + " " +
                  heatColor(r->value) + pctbuf + RESET);
         }
         return;
@@ -1512,7 +1661,9 @@ void renderCores(const DevView& cpu, int cols, int gh, std::vector<std::string>&
         for (int gc = 0; gc < gcols; ++gc)
         {
             int idx = gr * gcols + gc;
-            g[gc] = idx < n ? miniGraph(histFor(cores[idx]), 0, 100, cellW, cellH)
+            g[gc] = idx < n ? miniGraph(bucketHistory(histFor(cores[idx]), cellW, columnSamples(),
+                                                       Agg::Avg),
+                                        0, 100, cellW, cellH)
                             : std::vector<std::string>(cellH, std::string(cellW, ' '));
         }
         for (int L = 0; L < cellH; ++L)
@@ -1552,6 +1703,7 @@ void render(const Snapshot& snap)
             {"Left / Right", "switch tab"},
             {"1 - 9", "jump to tab"},
             {"t / Space", "cycle views: load → per-core (CPU) → each thermal graph"},
+            {"- / =", "zoom graph out / in (seconds per column)"},
             {"Up / Down", "move selection (Settings tab)"},
             {"h / ?", "toggle this help"},
             {"q", "quit"},
@@ -1750,14 +1902,16 @@ void render(const Snapshot& snap)
         if (v.kind == View::Temp)
         {
             // Thermal history graph for this one sensor.
-            std::vector<std::string> g = renderGraph(histFor(v.temp), 0, 100, gw, gh, Ax::Temp);
+            std::deque<double> hB = bucketHistory(histFor(v.temp), gw, columnSamples(), Agg::Avg);
+            std::vector<std::string> g = renderGraph(hB, 0, 100, gw, gh, Ax::Temp);
             for (std::string& row : g)
             {
                 push("  " + row);
             }
             char b[32];
             std::snprintf(b, sizeof(b), "%.0f°C", v.temp->value);
-            push(std::string("  ") + std::string(9, ' ') + GREY + "now " + RESET + b);
+            push(std::string("  ") + std::string(9, ' ') + GREY + "now " + RESET + b +
+                 std::string(GREY) + "  zoom " + RESET + zoomLabel());
         }
         else if (v.kind == View::Cores)
         {
@@ -1767,9 +1921,9 @@ void render(const Snapshot& snap)
         {
             // Single device: full-height graph plus a stat line. Memory overlays swap in blue.
             Series s = seriesFor(tab.cat, first, false);
-            std::deque<double> swapOv;
-            const std::deque<double>* ov = nullptr;
-            double ovMax = s.vmax;
+            std::deque<double> swapRaw; // memory-only swap series (raw, pre-bucketing)
+            double swapMax = s.vmax;
+            bool hasSwap = false;
             if (tab.cat == Cat::Mem)
             {
                 // Swap overlay scale is a setting: "fullness" (swap used vs its own total, so it
@@ -1782,10 +1936,10 @@ void render(const Snapshot& snap)
                     {
                         for (double bytes : histFor(swapUsed))
                         {
-                            swapOv.push_back(bytes);
+                            swapRaw.push_back(bytes);
                         }
-                        ov = &swapOv;
-                        ovMax = s.vmax; // share the RAM byte axis
+                        swapMax = s.vmax; // share the RAM byte axis
+                        hasSwap = true;
                     }
                 }
                 else
@@ -1795,10 +1949,10 @@ void render(const Snapshot& snap)
                     {
                         for (double bytes : histFor(swapUsed))
                         {
-                            swapOv.push_back(bytes / swapTotal->value);
+                            swapRaw.push_back(bytes / swapTotal->value);
                         }
-                        ov = &swapOv;
-                        ovMax = 1.0; // 0..1 fullness fills the graph height
+                        swapMax = 1.0; // 0..1 fullness fills the graph height
+                        hasSwap = true;
                     }
                 }
             }
@@ -1809,8 +1963,18 @@ void render(const Snapshot& snap)
             lw = std::max(lw, static_cast<int>(axLabel(s.ax, s.vmin).size()));
             lw = std::max(lw, 3);
             int ggw = std::max(20, std::min(cols - (4 + lw), 240)); // graph width for this gutter
+            // Apply the zoom: bucket the raw 1 s history into the graph columns (live == raw).
+            int per = columnSamples();
+            std::deque<double> hB = bucketHistory(s.h, ggw, per, Agg::Avg);
+            std::deque<double> swapB;
+            std::vector<Overlay> ovs;
+            if (hasSwap)
+            {
+                swapB = bucketHistory(swapRaw, ggw, per, Agg::Avg);
+                ovs.push_back({&swapB, swapMax, BLUE});
+            }
             std::vector<std::string> g =
-                renderGraph(s.h, s.vmin, s.vmax, ggw, gh, s.ax, ov, ovMax, BLUE, lw);
+                renderGraph(hB, s.vmin, s.vmax, ggw, gh, s.ax, ovs, lw);
             for (std::string& row : g)
             {
                 push("  " + row);
@@ -1850,7 +2014,7 @@ void render(const Snapshot& snap)
                     stat += std::string(GREY) + "  (" + RESET + b + GREY + ")" + RESET;
                 }
             }
-            if (ov)
+            if (hasSwap)
             {
                 const Reading* swapUsed = find(first, Quantity::DataVolume, "Swap Used");
                 const Reading* swapTotal = find(first, Quantity::DataVolume, "Swap Total");
@@ -1861,6 +2025,7 @@ void render(const Snapshot& snap)
                     stat += std::string(GREY) + " / " + RESET + bytesSize(swapTotal->value);
                 }
             }
+            stat += std::string(GREY) + "  zoom " + RESET + zoomLabel();
             push(stat);
         }
         else
@@ -1895,7 +2060,7 @@ void render(const Snapshot& snap)
         tabbar += " ";
     }
     std::string hint = std::string("  ") + GREY +
-                       "n/p tab   t toggle   1-9 jump   h help   q quit" + RESET;
+                       "n/p tab   t toggle   -/= zoom   1-9 jump   h help   q quit" + RESET;
 
     while (static_cast<int>(body.size()) < rows - 2)
     {
@@ -1920,6 +2085,7 @@ int main(int argc, char** argv)
             interval = v;
         }
     }
+    g_interval = interval;
 
     std::signal(SIGINT, onSignal);
 #ifdef SIGTERM
