@@ -44,6 +44,17 @@ void WinMemorySource::sample(std::vector<Reading>& out)
     uint64_t usedPage = s.ullTotalPageFile - s.ullAvailPageFile;
     emit(Quantity::DataVolume, Unit::Byte, "Commit Used", double(usedPage));
     emit(Quantity::DataVolume, Unit::Byte, "Commit Limit", double(s.ullTotalPageFile));
+
+    // Swap == page file: size is commit limit above RAM, used is commit charge above RAM.
+    uint64_t swapTotal = s.ullTotalPageFile > s.ullTotalPhys ? s.ullTotalPageFile - s.ullTotalPhys
+                                                             : 0;
+    uint64_t swapUsed = usedPage > usedPhys ? usedPage - usedPhys : 0;
+    if (swapUsed > swapTotal)
+    {
+        swapUsed = swapTotal;
+    }
+    emit(Quantity::DataVolume, Unit::Byte, "Swap Used", double(swapUsed));
+    emit(Quantity::DataVolume, Unit::Byte, "Swap Total", double(swapTotal));
 }
 
 } // namespace sources

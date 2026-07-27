@@ -2032,11 +2032,13 @@ void render(const Snapshot& snap)
         {
             // Multiple devices in one category: one sparkline row each.
             int sw = std::max(10, std::min(cols - 32, 200));
+            int per = columnSamples();
             for (const DevView* d : tab.devs)
             {
                 Series s = seriesFor(tab.cat, *d, false);
+                std::deque<double> hB = bucketHistory(s.h, sw, per, Agg::Avg);
                 std::string name = d->info ? d->info->name : "?";
-                push("  " + truncPad(name, 18) + " " + sparkline(s.h, s.vmin, s.vmax, sw) + " " +
+                push("  " + truncPad(name, 18) + " " + sparkline(hB, s.vmin, s.vmax, sw) + " " +
                      padLeft(curLabel(s), 9));
             }
         }
