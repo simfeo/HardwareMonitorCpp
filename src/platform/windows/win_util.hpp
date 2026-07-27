@@ -6,6 +6,7 @@
 
 #ifdef _WIN32
 
+#include <cstdint>
 #include <string>
 
 #include <windows.h>
@@ -41,6 +42,18 @@ inline std::string regString(HKEY root, const wchar_t* subkey, const wchar_t* va
         return wideToUtf8(buf);
     }
     return {};
+}
+
+// Reads a REG_DWORD value; returns 0 on failure.
+inline uint32_t regDword(HKEY root, const wchar_t* subkey, const wchar_t* value)
+{
+    DWORD data = 0;
+    DWORD size = sizeof(data);
+    if (RegGetValueW(root, subkey, value, RRF_RT_REG_DWORD, nullptr, &data, &size) == ERROR_SUCCESS)
+    {
+        return uint32_t(data);
+    }
+    return 0;
 }
 
 } // namespace win

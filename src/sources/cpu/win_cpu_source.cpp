@@ -26,10 +26,13 @@ constexpr uint32_t MSR_PP0_ENERGY_STATUS = 0x639; // cores
 constexpr uint32_t MSR_PP1_ENERGY_STATUS = 0x641; // uncore / iGPU
 constexpr uint32_t MSR_IA32_TEMPERATURE_TARGET = 0x1A2;
 constexpr uint32_t MSR_IA32_PACKAGE_THERM_STATUS = 0x1B1;
+constexpr uint32_t MSR_IA32_PERF_STATUS = 0x198; // bits[15:8] = current P-state ratio
+constexpr uint32_t MSR_PLATFORM_INFO = 0xCE;     // bits[15:8] = base (non-turbo) ratio
 
 // AMD Zen (family 17h/19h) facts.
 constexpr uint32_t MSR_AMD_PWR_UNIT = 0xC0010299;
 constexpr uint32_t MSR_AMD_PKG_ENERGY = 0xC001029B;
+constexpr uint32_t MSR_AMD_HW_PSTATE_STATUS = 0xC0010293; // CpuFid[7:0], CpuDfsId[13:8]
 constexpr uint32_t SMN_THM_CUR_TEMP = 0x00059800; // SMU thermal: bits[31:21] = 0.125C steps
 
 double nowSeconds()
@@ -83,6 +86,8 @@ std::vector<DeviceInfo> WinCpuSource::discover()
                        L"ProcessorNameString");
     info.name = name.empty() ? "CPU" : name;
     info.attributes["logical_cores"] = std::to_string(logicalCpuCount());
+    baseMhz_ = double(win::regDword(
+        HKEY_LOCAL_MACHINE, L"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", L"~MHz"));
 
     // Ring-0 MSR path (PawnIO). Picks the vendor module and reads the fixed scale factors once.
     std::string vendor =
@@ -112,6 +117,15 @@ std::vector<DeviceInfo> WinCpuSource::discover()
         if (msr_)
         {
             info.attributes["tjmax_c"] = std::to_string(int(tjMax_));
+        }
+        // Derive MHz-per-ratio from the base frequency and base ratio; fall back to 100 MHz.
+        if (msr_ && baseMhz_ > 0 && pawn_.readMsr(MSR_PLATFORM_INFO, v))
+        {
+            double baseRatio = double((v >> 8) & 0xFF);
+            if (baseRatio > 0)
+            {
+                busClock_ = baseMhz_ / baseRatio;
+            }
         }
     }
     else if (vendor == "AuthenticAMD" && pawn_.loadModule("AMDFamily17"))
@@ -154,6 +168,57 @@ void WinCpuSource::readRapl(std::vector<Reading>& out, uint32_t msr, Energy& st,
     }
 }
 
+double WinCpuSource::sampleMsrClock(int n)
+{
+    if (!msr_ || (vendor_ != Vendor::Intel && vendor_ != Vendor::Amd))
+    {
+        return 0;
+    }
+    HANDLE th = GetCurrentThread();
+    DWORD_PTR original = 0;
+    double maxMhz = 0;
+    for (int i = 0; i < n && i < 64; ++i)
+    {
+        // Pin to core i so the ring-0 read samples that core's per-core P-state MSR.
+        DWORD_PTR prev = SetThreadAffinityMask(th, DWORD_PTR(1) << i);
+        if (!prev)
+        {
+            continue;
+        }
+        if (!original)
+        {
+            original = prev;
+        }
+        uint64_t v = 0;
+        double f = 0;
+        if (vendor_ == Vendor::Intel)
+        {
+            if (pawn_.readMsr(MSR_IA32_PERF_STATUS, v))
+            {
+                f = double((v >> 8) & 0xFF) * busClock_;
+            }
+        }
+        else if (pawn_.readMsr(MSR_AMD_HW_PSTATE_STATUS, v))
+        {
+            double fid = double(v & 0xFF);
+            double did = double((v >> 8) & 0x3F);
+            if (did > 0)
+            {
+                f = fid / did * 200.0; // CoreCOF = CpuFid/CpuDfsId * 200 MHz
+            }
+        }
+        if (f > maxMhz)
+        {
+            maxMhz = f;
+        }
+    }
+    if (original)
+    {
+        SetThreadAffinityMask(th, original);
+    }
+    return maxMhz;
+}
+
 void WinCpuSource::sample(std::vector<Reading>& out)
 {
     int n = logicalCpuCount();
@@ -194,19 +259,28 @@ void WinCpuSource::sample(std::vector<Reading>& out)
         prev_ = std::move(cur);
     }
 
-    // --- Clock (processor power information) ---
+    // --- Clock ---
+    // The per-core P-state MSRs give a true dynamic clock; CurrentMhz from CallNtPowerInformation is
+    // unreliable/static on modern CPUs. Without ring-0 access we can't report a live value, so we
+    // report base + max clock instead of a misleading static "current".
+    double msrClock = sampleMsrClock(n);
+    if (msrClock > 0)
+    {
+        emit(Quantity::Clock, Unit::Megahertz, "Core Clock", msrClock);
+    }
+    else if (baseMhz_ > 0)
+    {
+        emit(Quantity::Clock, Unit::Megahertz, "Base Clock", baseMhz_);
+    }
     std::vector<ProcPower> power(n);
     if (CallNtPowerInformation(ProcessorInformation, nullptr, 0, power.data(),
                                ULONG(power.size() * sizeof(ProcPower))) == 0)
     {
-        unsigned long long sumCur = 0;
         ULONG maxMhz = 0;
         for (int i = 0; i < n; ++i)
         {
-            sumCur += power[i].CurrentMhz;
             maxMhz = (power[i].MaxMhz > maxMhz) ? power[i].MaxMhz : maxMhz;
         }
-        emit(Quantity::Clock, Unit::Megahertz, "Core Clock", double(sumCur) / n);
         emit(Quantity::Clock, Unit::Megahertz, "Max Clock", double(maxMhz));
     }
 
