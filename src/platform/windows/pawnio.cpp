@@ -4,6 +4,7 @@
 
 #ifdef _WIN32
 
+#include <algorithm>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -24,16 +25,39 @@ using ExecFn = HRESULT(STDAPICALLTYPE*)(HANDLE, PCSTR, const ULONG64*, SIZE_T, P
                                         PSIZE_T);
 using CloseFn = HRESULT(STDAPICALLTYPE*)(HANDLE);
 
-std::wstring exeDir()
+std::wstring dirOf(HMODULE mod)
 {
     wchar_t buf[MAX_PATH];
-    DWORD n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
+    DWORD n = GetModuleFileNameW(mod, buf, MAX_PATH);
     std::wstring p(buf, n);
     size_t slash = p.find_last_of(L"\\/");
     return slash == std::wstring::npos ? std::wstring() : p.substr(0, slash);
 }
 
-// Search order for a signed module: $HARDWARE_MONITOR_CPP_PAWNIO_DIR, <exe>\modules, <exe>.
+// Directory of the running process image.
+std::wstring exeDir()
+{
+    return dirOf(nullptr);
+}
+
+// Directory of the binary that actually contains this code. When the library is linked
+// into an executable that is the exe, but when it is embedded in a shared library and
+// loaded by a foreign host - the Python dashboard loads the C-ABI DLL through ctypes, so
+// the process is python.exe - only this finds the modules shipped beside the library.
+std::wstring selfDir()
+{
+    HMODULE mod = nullptr;
+    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                            reinterpret_cast<LPCWSTR>(&exeDir), &mod))
+    {
+        return {};
+    }
+    return dirOf(mod);
+}
+
+// Search order for a signed module: $HARDWARE_MONITOR_CPP_PAWNIO_DIR, then <dir>\modules
+// and <dir> for both the library's own directory and the process executable's.
 std::wstring findModule(const std::wstring& fileName)
 {
     std::vector<std::wstring> dirs;
@@ -43,11 +67,19 @@ std::wstring findModule(const std::wstring& fileName)
     {
         dirs.emplace_back(env, n);
     }
-    std::wstring ed = exeDir();
-    if (!ed.empty())
+    for (const std::wstring& base : {selfDir(), exeDir()})
     {
-        dirs.push_back(ed + L"\\modules");
-        dirs.push_back(ed);
+        if (base.empty())
+        {
+            continue;
+        }
+        for (const std::wstring& cand : {base + L"\\modules", base})
+        {
+            if (std::find(dirs.begin(), dirs.end(), cand) == dirs.end())
+            {
+                dirs.push_back(cand);
+            }
+        }
     }
     for (const std::wstring& d : dirs)
     {
