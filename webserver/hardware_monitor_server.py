@@ -24,16 +24,16 @@ def load_library():
         path = os.path.join(HERE, n)
         if os.path.exists(path):
             lib = ctypes.CDLL(path)
-            lib.ihw_create.restype = ctypes.c_void_p
-            lib.ihw_poll_json.restype = ctypes.c_char_p
-            lib.ihw_poll_json.argtypes = [ctypes.c_void_p]
-            lib.ihw_destroy.argtypes = [ctypes.c_void_p]
+            lib.hmc_create.restype = ctypes.c_void_p
+            lib.hmc_poll_json.restype = ctypes.c_char_p
+            lib.hmc_poll_json.argtypes = [ctypes.c_void_p]
+            lib.hmc_destroy.argtypes = [ctypes.c_void_p]
             return lib
     sys.exit("Could not find the hardware_monitor_cpp shared library next to this script (%s)." % ", ".join(names))
 
 
 LIB = load_library()
-HANDLE = LIB.ihw_create()
+HANDLE = LIB.hmc_create()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -60,7 +60,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/" or path == "/index.html":
             self._send_file("index.html", "text/html; charset=utf-8")
         elif path == "/api/data":
-            data = LIB.ihw_poll_json(HANDLE) or b"{}"
+            data = LIB.hmc_poll_json(HANDLE) or b"{}"
             self._send(200, "application/json", data)
         else:
             # serve any other static asset from web/
@@ -82,7 +82,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        LIB.ihw_destroy(HANDLE)
+        LIB.hmc_destroy(HANDLE)
 
 
 if __name__ == "__main__":

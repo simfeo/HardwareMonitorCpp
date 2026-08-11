@@ -68,12 +68,19 @@ def cmake_build(src, build_dir, extra_configure=None):
 
 
 def find_output(build_dir, names):
-    """Recursively find the first produced file matching any of `names`."""
+    """Recursively find the newest produced file matching any of `names`.
+
+    Newest wins so a stale copy left in the dist folder by an earlier build never
+    shadows the one that was just compiled.
+    """
+    found = []
     for root, _dirs, files in os.walk(build_dir):
         for n in names:
             if n in files:
-                return os.path.join(root, n)
-    return None
+                found.append(os.path.join(root, n))
+    if not found:
+        return None
+    return max(found, key=os.path.getmtime)
 
 
 # --- PawnIO signed-module auto-install (Windows) ---------------------------

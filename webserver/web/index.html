@@ -30,6 +30,20 @@
   .hidden { display: none; }
   .tag { font-size: 10px; color: #6b7790; border: 1px solid #313845; border-radius: 4px;
          padding: 0 4px; margin-left: 6px; }
+  button { background: #232935; color: #dfe3ea; border: 1px solid #313845; border-radius: 5px;
+           padding: 3px 10px; cursor: pointer; font: inherit; font-size: 12px; }
+  button:hover { background: #2b3341; }
+  #devices { background: #171b22; border-bottom: 1px solid #2a2f3a; padding: 12px 18px; }
+  #devices h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+                color: #7f8aa0; margin: 0 0 6px; font-weight: 600; }
+  #devices .grp { margin-bottom: 12px; }
+  #devices ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px 20px;
+                grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+  #devices li label { display: flex; align-items: center; gap: 7px; padding: 2px 0;
+                      cursor: pointer; user-select: none; }
+  #devices .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #devices .note { color: #6b7790; font-size: 11px; margin-left: auto; padding-left: 10px;
+                   white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -41,14 +55,19 @@
   <label><input type="checkbox" id="t-storage" checked> Storage</label>
   <label><input type="checkbox" id="t-network" checked> Network</label>
   <label>Update every <input type="number" id="interval" value="1" min="0.2" step="0.1"> s</label>
+  <button id="devbtn">Devices…</button>
   <span id="status">starting…</span>
 </header>
+<section id="devices" class="hidden"></section>
 <main id="cards"></main>
 
 <script>
 const HIST = 60;                       // history points kept for graphs
-const history = {};                    // deviceId -> [load%]
+const history = {};                    // graph key -> [series][samples]
+const graphs = {};                     // graph key -> {max, colors, fmt}
 let timer = null;
+
+const BLUE = "#4ea1ff", RED = "#ff6b6b", PURPLE = "#c084fc", GREEN = "#4ade80";
 
 const sym = { cpu:"CPU", "gpu-integrated":"GPU", "gpu-discrete":"GPU", memory:"Memory",
               storage:"Disk", network:"Net", battery:"Battery", other:"" };
@@ -74,6 +93,22 @@ function rowsHTML(pairs) {
   return pairs.filter(p=>p).map(([k,v])=>`<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("");
 }
 
+// Per-device overrides: id -> bool. Absent means "follow the automatic rule below".
+let prefs = {};
+try { prefs = JSON.parse(localStorage.getItem("devicePrefs") || "{}"); } catch(e) { prefs = {}; }
+function savePrefs() { try { localStorage.setItem("devicePrefs", JSON.stringify(prefs)); } catch(e) {} }
+
+// Default: hide network adapters with no link (Task Manager style); show everything else.
+function autoVisible(dev) {
+  if (dev.info.kind !== "network") return true;
+  const link = pick(dev, "count", "Link");
+  return !!(link && link.value >= 0.5);
+}
+function visible(dev) {
+  const p = prefs[dev.info.id];
+  return p === undefined ? autoVisible(dev) : p;
+}
+
 function enabled(kind) {
   if (kind==="cpu") return document.getElementById("t-cpu").checked;
   if (kind==="gpu-integrated"||kind==="gpu-discrete") return document.getElementById("t-gpu").checked;
@@ -83,66 +118,179 @@ function enabled(kind) {
   return true;
 }
 
-function drawGraph(canvas, data) {
+// Register a graph and append one sample per series. `cfg.max` is a fixed ceiling or "auto".
+function pushHist(key, values, cfg) {
+  graphs[key] = cfg;
+  let h = history[key];
+  if (!h || h.length !== values.length) h = history[key] = values.map(()=>[]);
+  values.forEach((v,i)=>{ h[i].push(+v||0); while (h[i].length>HIST) h[i].shift(); });
+}
+
+// Round a peak up to the next 1/2/5 x 10^n, so the axis lands on a readable number.
+function niceMax(v) {
+  if (!(v>0)) return 1;
+  const mag = Math.pow(10, Math.floor(Math.log10(v)));
+  for (const m of [1,2,5]) if (v <= m*mag) return m*mag;
+  return 10*mag;
+}
+
+function rgba(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${n>>16&255},${n>>8&255},${n&255},${a})`;
+}
+
+function drawGraph(canvas, key) {
+  const cfg = graphs[key] || { max:100, colors:[BLUE] };
+  const series = history[key] || [];
   const dpr = window.devicePixelRatio || 1;
   const w = canvas.clientWidth, h = canvas.clientHeight;
   canvas.width = w*dpr; canvas.height = h*dpr;
   const c = canvas.getContext("2d"); c.scale(dpr,dpr);
   c.clearRect(0,0,w,h);
+
+  let max = cfg.max;
+  if (max === "auto") {
+    let peak = 0;
+    for (const s of series) for (const v of s) if (v > peak) peak = v;
+    max = niceMax(Math.max(peak, cfg.floor||1));
+  }
+
   c.strokeStyle = "#2a2f3a"; c.lineWidth = 1;
-  for (let p=0;p<=100;p+=25){ const y=h-(p/100)*h; c.beginPath(); c.moveTo(0,y); c.lineTo(w,y); c.stroke(); }
-  if (data.length<2) return;
-  c.strokeStyle = "#4ea1ff"; c.lineWidth = 1.5; c.beginPath();
+  for (let p=0;p<=4;p++){ const y=h-(p/4)*h; c.beginPath(); c.moveTo(0,y); c.lineTo(w,y); c.stroke(); }
+
   const step = w/(HIST-1);
-  data.forEach((v,i)=>{ const x=i*step, y=h-(Math.max(0,Math.min(100,v))/100)*h;
-    i?c.lineTo(x,y):c.moveTo(x,y); });
-  c.stroke();
-  c.fillStyle="rgba(78,161,255,0.12)"; c.lineTo((data.length-1)*step,h); c.lineTo(0,h); c.closePath(); c.fill();
+  series.forEach((data,i) => {
+    if (data.length<2) return;
+    const color = cfg.colors[i] || BLUE;
+    c.strokeStyle = color; c.lineWidth = 1.5; c.beginPath();
+    data.forEach((v,j)=>{ const x=j*step, y=h-(Math.max(0,Math.min(max,v))/max)*h;
+      j?c.lineTo(x,y):c.moveTo(x,y); });
+    c.stroke();
+    c.fillStyle = rgba(color, series.length>1 ? 0.08 : 0.12);
+    c.lineTo((data.length-1)*step,h); c.lineTo(0,h); c.closePath(); c.fill();
+  });
+
+  if (cfg.fmt) {
+    c.fillStyle = "#6b7790"; c.font = "10px system-ui, sans-serif";
+    c.fillText(cfg.fmt(max), 5, 12);
+  }
 }
 
-function cardFor(dev) {
+const PCT  = { max:100, colors:[BLUE],  fmt:()=> "100 %" };
+const TEMP = { max:100, colors:[RED],   fmt:()=> "100 °C" };
+const SWAP = { max:100, colors:[GREEN], fmt:()=> "100 %" };
+// Network scales 0 -> peak like Task Manager; never below 1 KB/s so idle links stay readable.
+const RATE = { max:"auto", floor:1024, colors:[BLUE, PURPLE], fmt:m=> bytesRate(m) };
+
+function card(kind, title, rows, key, tag) {
+  return `<div class="card" data-kind="${kind}">
+            <h2>${title}${tag||""}</h2>${rows}
+            ${key?`<div class="grow"></div><canvas data-id="${key}"></canvas>`:""}</div>`;
+}
+
+// One device can yield several cards (main + temperature / swap). Returns an HTML string.
+function cardsFor(dev) {
   const k = dev.info.kind, name = dev.info.name, id = dev.info.id;
-  let rows = "", graph = false, gval = null;
+  const head = `${sym[k]||""} · ${name}`;
+  let out = "";
+
   if (k==="cpu") {
     const load=pick(dev,"load","Total"), clk=pick(dev,"clock","Core"),
           tmp=pick(dev,"temperature"), pwr=pick(dev,"power","Package");
-    rows = rowsHTML([["Load", num(load)+" %"], ["Clock", num(clk,0)+" MHz"],
-                     ["Temp", tmp?num(tmp)+" °C":"n/a"], ["Power", pwr?num(pwr)+" W":"n/a"]]);
-    graph=true; gval = load?load.value:0;
+    pushHist(id, [load?load.value:0], PCT);
+    out += card(k, head, rowsHTML([["Load", num(load)+" %"], ["Clock", num(clk,0)+" MHz"],
+                 tmp?null:["Temp","n/a"], ["Power", pwr?num(pwr)+" W":"n/a"]]), id);
+    if (tmp) {
+      pushHist(id+":temp", [tmp.value], TEMP);
+      out += card(k, `CPU Temp · ${name}`, rowsHTML([["Temp", num(tmp)+" °C"]]), id+":temp");
+    }
   } else if (k==="gpu-integrated"||k==="gpu-discrete") {
     const load=pick(dev,"load","Core"), clk=pick(dev,"clock","Core"),
           tmp=pick(dev,"temperature"), pwr=pick(dev,"power");
-    rows = rowsHTML([["Load", num(load)+" %"], clk?["Clock",num(clk,0)+" MHz"]:null,
-                     tmp?["Temp",num(tmp)+" °C"]:null, pwr?["Power",num(pwr)+" W"]:null]);
-    graph=true; gval = load?load.value:0;
+    pushHist(id, [load?load.value:0], PCT);
+    out += card(k, head, rowsHTML([["Load", num(load)+" %"], clk?["Clock",num(clk,0)+" MHz"]:null,
+                 pwr?["Power",num(pwr)+" W"]:null]), id);
+    if (tmp) {
+      pushHist(id+":temp", [tmp.value], TEMP);
+      out += card(k, `GPU Temp · ${name}`, rowsHTML([["Temp", num(tmp)+" °C"]]), id+":temp");
+    }
   } else if (k==="memory") {
     const use=pick(dev,"load","Usage"), used=pick(dev,"datavolume","Used"), tot=pick(dev,"datavolume","Total");
-    rows = rowsHTML([["Usage", num(use)+" %"], used&&tot?["Used", bytes(used.value)+" / "+bytes(tot.value)]:null]);
-    graph=true; gval = use?use.value:0;
+    pushHist(id, [use?use.value:0], PCT);
+    out += card(k, head, rowsHTML([["Usage", num(use)+" %"],
+                 used&&tot?["Used", bytes(used.value)+" / "+bytes(tot.value)]:null]), id);
+    const su=pick(dev,"datavolume","Swap Used"), st=pick(dev,"datavolume","Swap Total");
+    if (su && st && st.value > 0) {
+      const pct = 100*su.value/st.value;
+      pushHist(id+":swap", [pct], SWAP);
+      out += card(k, `Swap · ${name}`, rowsHTML([["Usage", pct.toFixed(1)+" %"],
+                   ["Used", bytes(su.value)+" / "+bytes(st.value)]]), id+":swap");
+    }
   } else if (k==="storage") {
     const used=pick(dev,"level","Used"), tmp=pick(dev,"temperature"), free=pick(dev,"capacity","Free");
     const act=pick(dev,"load","Activity"), rd=pick(dev,"datarate","Read"), wr=pick(dev,"datarate","Write");
     const ssd = dev.info.attributes && dev.info.attributes.media==="SSD";
-    rows = rowsHTML([["Used", num(used)+" %"], free?["Free", bytes(free.value)]:null,
-                     act?["Active", num(act)+" %"]:null,
-                     (rd||wr)?["R / W", bytesRate(rd?rd.value:0)+" / "+bytesRate(wr?wr.value:0)]:null,
-                     ssd&&tmp?["Temp", num(tmp)+" °C"]:(ssd?["Temp","n/a"]:null)]);
-    graph=true; gval = act?act.value:0;
+    pushHist(id, [act?act.value:0], PCT);
+    const tag = dev.info.attributes && dev.info.attributes.media
+      ? `<span class="tag">${dev.info.attributes.media}</span>` : "";
+    out += card(k, head, rowsHTML([["Used", num(used)+" %"], free?["Free", bytes(free.value)]:null,
+                 act?["Active", num(act)+" %"]:null,
+                 (rd||wr)?["R / W", bytesRate(rd?rd.value:0)+" / "+bytesRate(wr?wr.value:0)]:null,
+                 (ssd&&!tmp)?["Temp","n/a"]:null]), id, tag);
+    if (tmp) {
+      pushHist(id+":temp", [tmp.value], TEMP);
+      out += card(k, `Disk Temp · ${name}`, rowsHTML([["Temp", num(tmp)+" °C"]]), id+":temp", tag);
+    }
   } else if (k==="network") {
-    const link=pick(dev,"count","Link");
-    if (!link || link.value < 0.5) return null;   // only connected adapters (Task Manager style)
     const dn=pick(dev,"datarate","Download"), up=pick(dev,"datarate","Upload");
-    rows = rowsHTML([["Down", bytesRate(dn?dn.value:0)], ["Up", bytesRate(up?up.value:0)]]);
-  } else return null;
-
-  if (graph) {
-    if (!history[id]) history[id]=[];
-    const arr = history[id]; arr.push(gval||0); while (arr.length>HIST) arr.shift();
+    pushHist(id, [dn?dn.value:0, up?up.value:0], RATE);
+    out += card(k, head, rowsHTML([["Down", bytesRate(dn?dn.value:0)], ["Up", bytesRate(up?up.value:0)]]), id);
   }
-  const tag = dev.info.attributes && dev.info.attributes.media ? `<span class="tag">${dev.info.attributes.media}</span>` : "";
-  return `<div class="card" data-kind="${k}">
-            <h2>${sym[k]||""} · ${name}${tag}</h2>${rows}
-            ${graph?`<div class="grow"></div><canvas data-id="${id}"></canvas>`:""}</div>`;
+  return out;
+}
+
+const KIND_LABEL = { cpu:"CPU", "gpu-integrated":"GPU (integrated)", "gpu-discrete":"GPU (discrete)",
+                     memory:"Memory", storage:"Storage", network:"Network", battery:"Battery",
+                     other:"Other" };
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+// Rebuilt only when the device set changes, so clicking a checkbox is not fought by the poll.
+let devSig = "";
+function renderDevicePanel(sorted) {
+  const sig = sorted.map(d=>d.info.id).join("|") + "#" + JSON.stringify(prefs);
+  if (sig === devSig) return;
+  devSig = sig;
+
+  let html = "";
+  for (const kind of Object.keys(KIND_LABEL)) {
+    const list = sorted.filter(d => d.info.kind === kind);
+    if (!list.length) continue;
+    html += `<div class="grp"><h3>${KIND_LABEL[kind]}</h3><ul>`;
+    for (const d of list) {
+      const on = visible(d);
+      const overridden = prefs[d.info.id] !== undefined;
+      const note = d.info.kind === "network" && !autoVisible(d) ? "no link"
+                 : (overridden ? "manual" : "");
+      html += `<li><label><input type="checkbox" data-dev="${esc(d.info.id)}" ${on?"checked":""}>
+                 <span class="name">${esc(d.info.name)}</span>
+                 ${note?`<span class="note">${note}</span>`:""}</label></li>`;
+    }
+    html += "</ul></div>";
+  }
+  html += `<button id="devreset">Reset to automatic</button>`;
+
+  const panel = document.getElementById("devices");
+  panel.innerHTML = html;
+  panel.querySelectorAll("input[data-dev]").forEach(cb => {
+    cb.addEventListener("change", () => {
+      prefs[cb.getAttribute("data-dev")] = cb.checked;
+      savePrefs(); tick();
+    });
+  });
+  document.getElementById("devreset").addEventListener("click", () => {
+    prefs = {}; savePrefs(); tick();
+  });
 }
 
 async function tick() {
@@ -157,12 +305,14 @@ async function tick() {
   const sorted = Object.values(devs).sort((a,b)=>order.indexOf(a.info.kind)-order.indexOf(b.info.kind));
 
   let html = "";
-  for (const d of sorted) { if (!enabled(d.info.kind)) continue; const c = cardFor(d); if (c) html += c; }
+  renderDevicePanel(sorted);
+  for (const d of sorted) {
+    if (!enabled(d.info.kind) || !visible(d)) continue;
+    html += cardsFor(d);
+  }
   document.getElementById("cards").innerHTML = html;
   // draw graphs after DOM update
-  document.querySelectorAll("canvas[data-id]").forEach(cv => {
-    const arr = history[cv.getAttribute("data-id")] || []; drawGraph(cv, arr);
-  });
+  document.querySelectorAll("canvas[data-id]").forEach(cv => drawGraph(cv, cv.getAttribute("data-id")));
   document.getElementById("status").textContent = snap.devices.length + " devices · " + new Date().toLocaleTimeString();
 }
 
@@ -173,6 +323,9 @@ function reschedule() {
   timer = setInterval(tick, s*1000);
 }
 document.getElementById("interval").addEventListener("change", reschedule);
+document.getElementById("devbtn").addEventListener("click", () => {
+  document.getElementById("devices").classList.toggle("hidden");
+});
 tick(); reschedule();
 </script>
 </body>

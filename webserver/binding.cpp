@@ -83,12 +83,12 @@ extern "C"
 {
 
 #ifdef _WIN32
-#define IHW_EXPORT __declspec(dllexport)
+#define HMC_EXPORT __declspec(dllexport)
 #else
-#define IHW_EXPORT __attribute__((visibility("default")))
+#define HMC_EXPORT __attribute__((visibility("default")))
 #endif
 
-    IHW_EXPORT void* ihw_create()
+    HMC_EXPORT void* hmc_create()
     {
         auto* h = new Handle();
         h->monitor.addPlatformSources();
@@ -97,13 +97,13 @@ extern "C"
         return h;
     }
 
-    IHW_EXPORT void ihw_destroy(void* p)
+    HMC_EXPORT void hmc_destroy(void* p)
     {
         delete static_cast<Handle*>(p);
     }
 
     // Returns a JSON snapshot. The pointer is owned by the handle and valid until the next call.
-    IHW_EXPORT const char* ihw_poll_json(void* p)
+    HMC_EXPORT const char* hmc_poll_json(void* p)
     {
         auto* h = static_cast<Handle*>(p);
         if (!h)

@@ -24,6 +24,12 @@ target_link_libraries(hardware_monitor_cpp_c PRIVATE hardware_monitor_cpp)
 set_target_properties(hardware_monitor_cpp_c PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${DIST}"   # .dll (Windows)
     LIBRARY_OUTPUT_DIRECTORY "${DIST}")  # .so / .dylib (Linux/macOS)
+# Multi-config generators append the config name unless the per-config vars are set too.
+foreach(cfg IN ITEMS DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
+    set_target_properties(hardware_monitor_cpp_c PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY_${cfg} "${DIST}"
+        LIBRARY_OUTPUT_DIRECTORY_${cfg} "${DIST}")
+endforeach()
 
 # Assemble the ready-to-ship folder: server script + web assets next to the library.
 add_custom_command(TARGET hardware_monitor_cpp_c POST_BUILD
