@@ -2,7 +2,7 @@
 // Copyright (c) 2026 idimus. Free for non-commercial use; commercial use requires a license.
 //
 // Assembles the set of telemetry sources for the host platform.
-#include "idimus_hw/source.hpp"
+#include "hardware_monitor_cpp/source.hpp"
 
 #ifdef __APPLE__
 #include "sources/battery/mac_battery_source.hpp"
@@ -31,7 +31,7 @@
 #include "sources/storage/linux_storage_source.hpp"
 #endif
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 
 std::vector<std::unique_ptr<Source>> createPlatformSources()
@@ -66,4 +66,4 @@ std::vector<std::unique_ptr<Source>> createPlatformSources()
     return sources;
 }
 
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp

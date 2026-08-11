@@ -10,7 +10,7 @@
 #include <IOKit/IOKitLib.h>
 #include <mach/mach.h>
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 namespace mac
 {
@@ -225,6 +225,6 @@ std::vector<std::string> Smc::allKeys()
 }
 
 } // namespace mac
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp
 
 #endif // __APPLE__

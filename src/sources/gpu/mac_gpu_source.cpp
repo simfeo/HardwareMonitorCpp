@@ -8,7 +8,7 @@
 
 #include "platform/macos/cf_util.hpp"
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 namespace sources
 {
@@ -152,6 +152,6 @@ void MacGpuSource::sample(std::vector<Reading>& out)
 }
 
 } // namespace sources
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp
 
 #endif // __APPLE__

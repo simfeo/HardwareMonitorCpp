@@ -1,4 +1,4 @@
-# idimus_hw
+# hardware_monitor_cpp
 
 A cross-platform hardware-telemetry library with a small, data-oriented core. It exposes the
 machine's sensors as a flat, queryable stream of **readings** rather than an object tree.
@@ -8,7 +8,7 @@ layouts, NVMe offsets, PCI IDs).
 
 ## License
 
-idimus_hw is **dual-licensed**:
+hardware_monitor_cpp is **dual-licensed**:
 
 - **Free for noncommercial use** under the **PolyForm Noncommercial License 1.0.0**
   ([`LICENSE.md`](LICENSE.md)) — personal, research, education, evaluation, nonprofit.
@@ -28,8 +28,8 @@ DeviceInfo / DeviceId  stable (kind, ordinal) identity + metadata
 ```
 
 ```cpp
-#include "idimus_hw/idimus_hw.hpp"
-using namespace idimus_hw;
+#include "hardware_monitor_cpp/hardware_monitor_cpp.hpp"
+using namespace hardware_monitor_cpp;
 
 Monitor m;
 m.addPlatformSources();
@@ -52,20 +52,20 @@ for (const Reading& r : s.forQuantity(Quantity::Temperature))
 
 Two ready-to-ship monitors live in their own top-level folders, each with its own CMake:
 
-- **`console/`** — a live terminal monitor (`idimus_monitor`) showing CPU usage/clock/temperature,
+- **`console/`** — a live terminal monitor (`hardware_monitor_console`) showing CPU usage/clock/temperature,
   GPU usage/clock/temperature, SSD temperatures (HDDs are skipped), and network throughput,
-  refreshing every second (or `idimus_monitor <seconds>`).
+  refreshing every second (or `hardware_monitor_console <seconds>`).
   ```sh
   cd console && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
-  ./build/bin/idimus_monitor 2
+  ./build/bin/hardware_monitor_console 2
   ```
 - **`webserver/`** — a Python dashboard. CMake builds a small C-ABI shared library wrapping
-  idimus_hw and assembles `build/dist/` (the library + `idimus_server.py` + `web/`). The server
+  hardware_monitor_cpp and assembles `build/dist/` (the library + `hardware_monitor_server.py` + `web/`). The server
   uses only the standard-library `http.server` and loads the library via `ctypes`; the page draws
   load graphs and offers toggles for which sections to show and the update interval.
   ```sh
   cd webserver && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
-  cd build/dist && python idimus_server.py        # http://127.0.0.1:8000
+  cd build/dist && python hardware_monitor_server.py        # http://127.0.0.1:8000
   ```
 
 Both run without privileges for load/clock/memory/network/storage/GPU/battery; CPU temperature and
@@ -83,7 +83,7 @@ package power additionally need administrator/root (and PawnIO on Windows).
 git clone --recurse-submodules <repo>
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-./build/idimus_hw_dump
+./build/hardware_monitor_cpp_dump
 ```
 
 Some macOS sensors (SMC temperatures, fans) require running as root.
@@ -95,7 +95,7 @@ via its official `PawnIOLib.dll`, loaded dynamically. The Pawn module *sources* 
 a git submodule under `third_party/pawnio-modules` (`namazso/PawnIO.Modules`, LGPL-2.1, pinned to
 `0.1.6`). The **signed module binary** (`IntelMSR.bin` on Intel, `AMDFamily17.bin` on AMD) is a
 release artifact and is **not** bundled — place it in a `modules/` folder next to the executable or
-set `IDIMUS_PAWNIO_DIR`. On Windows you can automate this with the helper script, which detects your
+set `HARDWARE_MONITOR_CPP_PAWNIO_DIR`. On Windows you can automate this with the helper script, which detects your
 CPU vendor, downloads the pinned module, and drops it next to each built executable:
 
 ```powershell

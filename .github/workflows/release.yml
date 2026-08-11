@@ -122,25 +122,25 @@ jobs:
           docs=(LICENSE.md LICENSING.md NOTICE.md README.md)
 
           # 1) Console monitor
-          cpkg="idimus_monitor-${V}-${T}"
+          cpkg="hardware_monitor_console-${V}-${T}"
           mkdir -p "pkg/${cpkg}"
-          find console/build -maxdepth 4 \( -name 'idimus_monitor' -o -name 'idimus_monitor.exe' \) \
+          find console/build -maxdepth 4 \( -name 'hardware_monitor_console' -o -name 'hardware_monitor_console.exe' \) \
             | head -n1 | xargs -I{} cp {} "pkg/${cpkg}/"
           cp "${docs[@]}" "pkg/${cpkg}/"
           if [ -d pawnio_modules ]; then cp -r pawnio_modules "pkg/${cpkg}/modules"; fi
 
           # 2) Python webserver (assembled dist/: shared lib + server + web assets)
-          wpkg="idimus_webserver-${V}-${T}"
+          wpkg="hardware_monitor_cpp_webserver-${V}-${T}"
           mkdir -p "pkg/${wpkg}"
           cp -r webserver/build/dist/. "pkg/${wpkg}/"
           cp "${docs[@]}" "pkg/${wpkg}/"
           if [ -d pawnio_modules ]; then cp -r pawnio_modules "pkg/${wpkg}/modules"; fi
 
           # 3) SDK: static library + public headers
-          spkg="idimus_hw-sdk-${V}-${T}"
+          spkg="hardware_monitor_cpp-sdk-${V}-${T}"
           mkdir -p "pkg/${spkg}/lib"
           cp -r include "pkg/${spkg}/include"
-          find build-sdk -maxdepth 3 \( -name 'idimus_hw.lib' -o -name 'libidimus_hw.a' \) \
+          find build-sdk -maxdepth 3 \( -name 'hardware_monitor_cpp.lib' -o -name 'libhardware_monitor_cpp.a' \) \
             | head -n1 | xargs -I{} cp {} "pkg/${spkg}/lib/"
           cp "${docs[@]}" "pkg/${spkg}/"
 

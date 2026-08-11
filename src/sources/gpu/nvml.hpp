@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <string>
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 namespace nv
 {
@@ -58,4 +58,4 @@ private:
 };
 
 } // namespace nv
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp

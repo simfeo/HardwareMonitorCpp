@@ -13,7 +13,7 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/IOKitLib.h>
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 namespace mac
 {
@@ -341,6 +341,6 @@ bool IoReport::sample(Sample& out)
 }
 
 } // namespace mac
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp
 
 #endif // __APPLE__

@@ -8,9 +8,9 @@
 #include <string>
 #include <vector>
 
-#include "idimus_hw/source.hpp"
+#include "hardware_monitor_cpp/source.hpp"
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 namespace sources
 {
@@ -43,4 +43,4 @@ private:
 };
 
 } // namespace sources
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp

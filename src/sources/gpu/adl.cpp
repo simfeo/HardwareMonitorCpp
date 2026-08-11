@@ -10,7 +10,7 @@
 
 #include <windows.h>
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 namespace amd
 {
@@ -200,6 +200,6 @@ int Adl::dedicatedVramMb(int adapterIndex)
 }
 
 } // namespace amd
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp
 
 #endif // _WIN32

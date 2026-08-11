@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 // Copyright (c) 2026 idimus. Free for non-commercial use; commercial use requires a license.
 //
-// idimus_hw — an immutable point-in-time view: the device table plus every reading.
+// hardware_monitor_cpp — an immutable point-in-time view: the device table plus every reading.
 #pragma once
 
 #include <vector>
 
-#include "idimus_hw/device.hpp"
-#include "idimus_hw/reading.hpp"
+#include "hardware_monitor_cpp/device.hpp"
+#include "hardware_monitor_cpp/reading.hpp"
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 
 class Snapshot
@@ -41,4 +41,4 @@ private:
     std::vector<Reading> readings_;
 };
 
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp

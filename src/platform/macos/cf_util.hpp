@@ -11,7 +11,7 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/IOKitLib.h>
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 namespace mac
 {
@@ -110,6 +110,6 @@ inline std::string searchDictString(io_registry_entry_t e, const char* dictKey, 
 }
 
 } // namespace mac
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp
 
 #endif // __APPLE__

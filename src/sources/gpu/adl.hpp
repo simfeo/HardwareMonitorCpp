@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 namespace amd
 {
@@ -70,4 +70,4 @@ private:
 };
 
 } // namespace amd
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 // Copyright (c) 2026 idimus. Free for non-commercial use; commercial use requires a license.
 //
-// idimus_monitor — live console hardware monitor with a tabbed, htop-style TUI.
+// hardware_monitor_console — live console hardware monitor with a tabbed, htop-style TUI.
 //
 // The screen shows one hardware tab at a time with its metric drawn as a scrolling time graph;
 // a tab bar sits at the bottom. Controls:
@@ -29,7 +29,7 @@
 #include <string>
 #include <vector>
 
-#include "idimus_hw/idimus_hw.hpp"
+#include "hardware_monitor_cpp/hardware_monitor_cpp.hpp"
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -47,7 +47,7 @@
 #include <mach-o/dyld.h>
 #endif
 
-using namespace idimus_hw;
+using namespace hardware_monitor_cpp;
 
 namespace
 {
@@ -460,7 +460,7 @@ void saveSettings()
     {
         return;
     }
-    f << "# idimus_monitor settings — also editable from the Settings tab.\n";
+    f << "# hardware_monitor_console settings — also editable from the Settings tab.\n";
     f << "# true = show the device, false = hide it.\n\n";
     f << "options:\n";
     f << "  cpu_cores: " << g_settings.cpuCoreStyle << "\n";
@@ -1709,7 +1709,8 @@ void render(const Snapshot& snap)
             {"q", "quit"},
         };
         std::vector<std::string> body;
-        body.push_back(std::string(BOLD) + CYAN + "  idimus_hw" + RESET + GREY + "  hotkeys" + RESET);
+        body.push_back(std::string(BOLD) + CYAN + "  hardware_monitor_cpp" + RESET + GREY +
+                       "  hotkeys" + RESET);
         body.push_back(std::string(TRACK) + "  " + std::string(std::min(cols - 4, 74), '-') + RESET);
         body.push_back("");
         for (const Row& r : rows_)
@@ -1820,8 +1821,8 @@ void render(const Snapshot& snap)
     auto push = [&](const std::string& s = "") { body.push_back(s); };
 
     // Header.
-    push(std::string(BOLD) + CYAN + "  idimus_hw" + RESET + GREY + "  hardware monitor" + RESET +
-         "     " + GREY + nowClock() + RESET);
+    push(std::string(BOLD) + CYAN + "  hardware_monitor_cpp" + RESET + GREY + "  hardware monitor" +
+         RESET + "     " + GREY + nowClock() + RESET);
     push(std::string(TRACK) + "  " + std::string(std::min(cols - 4, 74), '-') + RESET);
     push();
 
@@ -2093,7 +2094,7 @@ int main(int argc, char** argv)
 #ifdef SIGTERM
     std::signal(SIGTERM, onSignal);
 #endif
-    g_configPath = exeDir() + "/idimus_monitor.yaml";
+    g_configPath = exeDir() + "/hardware_monitor_console.yaml";
     loadSettings(g_configPath);
 
     std::atexit(leaveTui);

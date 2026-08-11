@@ -6,7 +6,7 @@
 
 #include <windows.h>
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 namespace sources
 {
@@ -58,6 +58,6 @@ void WinMemorySource::sample(std::vector<Reading>& out)
 }
 
 } // namespace sources
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp
 
 #endif // _WIN32

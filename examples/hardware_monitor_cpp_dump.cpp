@@ -6,10 +6,10 @@
 #include <cstdio>
 #include <thread>
 
-#include "idimus_hw/idimus_hw.hpp"
+#include "hardware_monitor_cpp/hardware_monitor_cpp.hpp"
 
 int main() {
-    using namespace idimus_hw;
+    using namespace hardware_monitor_cpp;
 
     Monitor monitor;
     monitor.addPlatformSources();
@@ -20,7 +20,7 @@ int main() {
     std::this_thread::sleep_for(std::chrono::seconds(1));
     Snapshot snap = monitor.poll();
 
-    std::printf("idimus_hw — %zu device(s)\n\n", snap.devices().size());
+    std::printf("hardware_monitor_cpp — %zu device(s)\n\n", snap.devices().size());
     for (const DeviceInfo& d : snap.devices()) {
         std::printf("== %s  [%s] ==\n", d.name.c_str(), toString(d.id).c_str());
         for (const auto& a : d.attributes)

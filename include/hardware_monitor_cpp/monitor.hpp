@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 // Copyright (c) 2026 idimus. Free for non-commercial use; commercial use requires a license.
 //
-// idimus_hw — the façade: holds the sources, enumerates devices once, and produces snapshots.
+// hardware_monitor_cpp — the façade: holds the sources, enumerates devices once, and
+// produces snapshots.
 #pragma once
 
 #include <memory>
 #include <vector>
 
-#include "idimus_hw/device.hpp"
-#include "idimus_hw/snapshot.hpp"
-#include "idimus_hw/source.hpp"
+#include "hardware_monitor_cpp/device.hpp"
+#include "hardware_monitor_cpp/snapshot.hpp"
+#include "hardware_monitor_cpp/source.hpp"
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 
 class Monitor
@@ -42,4 +43,4 @@ private:
     bool opened_ = false;
 };
 
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp

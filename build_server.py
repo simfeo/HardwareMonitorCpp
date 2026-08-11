@@ -4,11 +4,11 @@
 
 Usage:  python build_server.py
 
-Assembles a ready-to-run folder (the shared library next to idimus_server.py and
+Assembles a ready-to-run folder (the shared library next to hardware_monitor_server.py and
 web/). On Windows the matching signed PawnIO module is installed alongside so CPU
 temperature/power work with no extra steps. Then just:
 
-    cd <dist> && python idimus_server.py      # http://127.0.0.1:8000
+    cd <dist> && python hardware_monitor_server.py      # http://127.0.0.1:8000
 """
 import os
 import shutil
@@ -22,14 +22,14 @@ def main():
 
     lib = find_output(
         build_dir,
-        ["idimus_hw_c.dll", "libidimus_hw_c.so", "libidimus_hw_c.dylib"],
+        ["hardware_monitor_cpp_c.dll", "libhardware_monitor_cpp_c.so", "libhardware_monitor_cpp_c.dylib"],
     )
     if not lib:
         print("[x] The shared library was not produced.", file=sys.stderr)
         return 1
 
     # Multi-config generators (e.g. Visual Studio) drop the library into a
-    # config subfolder; make sure it sits directly next to idimus_server.py.
+    # config subfolder; make sure it sits directly next to hardware_monitor_server.py.
     os.makedirs(dist, exist_ok=True)
     if os.path.dirname(lib) != dist:
         shutil.copy2(lib, dist)
@@ -38,7 +38,7 @@ def main():
 
     print("\n[+] Web dashboard build complete.")
     print(f"    folder : {dist}")
-    print(f"    run    : cd \"{dist}\" && python idimus_server.py")
+    print(f"    run    : cd \"{dist}\" && python hardware_monitor_server.py")
     return 0
 
 

@@ -6,13 +6,13 @@
 //
 // The signed module blob (IntelMSR.bin) is NOT bundled: it is a release artifact of the pinned
 // PawnIO.Modules submodule (LGPL-2.1). Place it in a `modules/` folder next to the executable or
-// point the IDIMUS_PAWNIO_DIR environment variable at it.
+// point the HARDWARE_MONITOR_CPP_PAWNIO_DIR environment variable at it.
 #pragma once
 
 #include <cstdint>
 #include <string>
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 namespace win
 {
@@ -53,4 +53,4 @@ private:
 };
 
 } // namespace win
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp

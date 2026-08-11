@@ -10,7 +10,7 @@
 #include <dlfcn.h>
 #endif
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 namespace nv
 {
@@ -199,4 +199,4 @@ bool Nvml::fanPercent(void* dev, unsigned& out) const
 }
 
 } // namespace nv
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
-"""Build the console monitor (idimus_monitor).
+"""Build the console monitor (hardware_monitor_console).
 
 Usage:  python build_console.py
 
@@ -16,9 +16,9 @@ from build_common import cmake_build, find_output, install_pawnio
 def main():
     build_dir = cmake_build("console", "console/build")
 
-    exe = find_output(build_dir, ["idimus_monitor.exe", "idimus_monitor"])
+    exe = find_output(build_dir, ["hardware_monitor_console.exe", "hardware_monitor_console"])
     if not exe:
-        print("[x] idimus_monitor was not produced.", file=sys.stderr)
+        print("[x] hardware_monitor_console was not produced.", file=sys.stderr)
         return 1
 
     install_pawnio(os.path.dirname(exe))

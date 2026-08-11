@@ -12,7 +12,7 @@
 #include <mach/processor_info.h>
 #include <sys/sysctl.h>
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 namespace sources
 {
@@ -209,6 +209,6 @@ void MacCpuSource::sample(std::vector<Reading>& out)
 }
 
 } // namespace sources
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp
 
 #endif // __APPLE__

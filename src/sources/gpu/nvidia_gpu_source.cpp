@@ -2,7 +2,7 @@
 // Copyright (c) 2026 idimus. Free for non-commercial use; commercial use requires a license.
 #include "sources/gpu/nvidia_gpu_source.hpp"
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 namespace sources
 {
@@ -91,4 +91,4 @@ void NvidiaGpuSource::sample(std::vector<Reading>& out)
 }
 
 } // namespace sources
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 // Copyright (c) 2026 idimus. Free for non-commercial use; commercial use requires a license.
-#include "idimus_hw/device.hpp"
+#include "hardware_monitor_cpp/device.hpp"
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 
 const char* deviceKindName(DeviceKind k)
@@ -28,4 +28,4 @@ std::string toString(const DeviceId& id)
     return std::string(deviceKindName(id.kind)) + "/" + std::to_string(id.ordinal);
 }
 
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp

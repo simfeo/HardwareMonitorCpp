@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
-# idimus_hw house style:
+# hardware_monitor_cpp house style:
 #   - opening braces always go on their own line (Allman)
 #   - every if / else if / else / for / while / do has braces, even one-liners
 Language: Cpp

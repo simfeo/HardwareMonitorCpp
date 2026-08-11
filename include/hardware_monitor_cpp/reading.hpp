@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 // Copyright (c) 2026 idimus. Free for non-commercial use; commercial use requires a license.
 //
-// idimus_hw — a single telemetry reading (the atomic unit of this data-oriented model).
+// hardware_monitor_cpp — a single telemetry reading (the atomic unit of this
+// data-oriented model).
 #pragma once
 
 #include <string>
 
-#include "idimus_hw/device.hpp"
-#include "idimus_hw/units.hpp"
+#include "hardware_monitor_cpp/device.hpp"
+#include "hardware_monitor_cpp/units.hpp"
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 
 // One measured value attributed to a device channel at sample time. Readings are plain values:
@@ -23,4 +24,4 @@ struct Reading
     double value = 0.0;
 };
 
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp

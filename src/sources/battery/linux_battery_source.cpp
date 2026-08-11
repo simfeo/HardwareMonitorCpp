@@ -9,7 +9,7 @@
 
 #include "platform/linux/sysfs.hpp"
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 namespace sources
 {
@@ -106,6 +106,6 @@ void LinuxBatterySource::sample(std::vector<Reading>& out)
 }
 
 } // namespace sources
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp
 
 #endif // __linux__

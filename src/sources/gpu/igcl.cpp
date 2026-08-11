@@ -10,7 +10,7 @@
 
 #include <windows.h>
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 namespace intel
 {
@@ -278,6 +278,6 @@ GpuReadings Igcl::read(size_t ordinal)
 }
 
 } // namespace intel
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp
 
 #endif // _WIN32

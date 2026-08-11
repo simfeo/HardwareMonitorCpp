@@ -1,6 +1,6 @@
 # Licensing
 
-idimus_hw is **dual-licensed**. Choose the license that fits your use.
+hardware_monitor_cpp is **dual-licensed**. Choose the license that fits your use.
 
 ## 1. Open license — PolyForm Noncommercial 1.0.0 (default, free)
 
@@ -17,7 +17,7 @@ use**. If your use is noncommercial, you need nothing further and owe nothing.
 **Any commercial use requires a separate commercial license.** Commercial use includes, but is
 not limited to:
 
-- using idimus_hw in a product or service you sell or monetize;
+- using hardware_monitor_cpp in a product or service you sell or monetize;
 - using it internally at a for-profit company to support revenue-generating activity;
 - bundling or distributing it inside commercial software or hardware;
 - offering it (or a derivative) as part of a paid or ad-supported product or SaaS.
@@ -45,4 +45,4 @@ lets the project keep offering both the free and the commercial license.
 ## Third-party components
 
 Bundled or referenced third-party components keep their own licenses — see [`NOTICE.md`](NOTICE.md).
-A commercial license for idimus_hw does not relicense those components.
+A commercial license for hardware_monitor_cpp does not relicense those components.

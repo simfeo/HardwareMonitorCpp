@@ -1,12 +1,12 @@
 <#
 .SYNOPSIS
-    Fetches the signed PawnIO module that idimus_hw needs for CPU temperature and
+    Fetches the signed PawnIO module that hardware_monitor_cpp needs for CPU temperature and
     package power on Windows, and places it where the built executables look for it.
 
 .DESCRIPTION
     Ring-0 MSR reads (CPU temperature + RAPL power) on Windows go through the PawnIO
-    signed kernel driver. idimus_hw loads a signed Pawn module at runtime, searching:
-        1. %IDIMUS_PAWNIO_DIR%
+    signed kernel driver. hardware_monitor_cpp loads a signed Pawn module at runtime, searching:
+        1. %HARDWARE_MONITOR_CPP_PAWNIO_DIR%
         2. <exe>\modules
         3. <exe>
     The signed module binary is a release artifact of namazso/PawnIO.Modules and is
@@ -87,7 +87,7 @@ if ($pawnLib) {
 
 # --- Download + extract the signed module release ---------------------------
 $url = "https://github.com/namazso/PawnIO.Modules/releases/download/$Version/release_$($Version -replace '\.','_').zip"
-$work = Join-Path $env:TEMP "idimus_pawnio_$Version"
+$work = Join-Path $env:TEMP "hardware_monitor_cpp_pawnio_$Version"
 $zip  = "$work.zip"
 Info "Downloading PawnIO modules $Version ..."
 Info "  $url"
@@ -107,7 +107,7 @@ if ($Destination) {
     $targets += (Resolve-Path $Destination).Path
 } else {
     Info "Discovering built idimus executables under $RepoRoot ..."
-    $exes = Get-ChildItem $RepoRoot -Recurse -File -Include "idimus_monitor.exe","idimus_hw_dump.exe" -ErrorAction SilentlyContinue
+    $exes = Get-ChildItem $RepoRoot -Recurse -File -Include "hardware_monitor_console.exe","hardware_monitor_cpp_dump.exe" -ErrorAction SilentlyContinue
     $targets = $exes | ForEach-Object { $_.DirectoryName } | Sort-Object -Unique
     if (-not $targets) {
         Warn "No built executables found. Build first, or pass -Destination <exe folder>."
@@ -129,4 +129,4 @@ Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host ""
 Ok "Done. Run the monitor elevated (admin) to read CPU temperature/power:"
-Write-Host "    sudo <path>\idimus_monitor.exe" -ForegroundColor Cyan
+Write-Host "    sudo <path>\hardware_monitor_console.exe" -ForegroundColor Cyan

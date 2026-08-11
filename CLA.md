@@ -1,6 +1,6 @@
 # Contributor License Agreement (Individual)
 
-Thank you for contributing to **idimus_hw** (the "Project"), maintained by **idimus** (the
+Thank you for contributing to **hardware_monitor_cpp** (the "Project"), maintained by **idimus** (the
 "Owner"). To keep the Project sustainable, it is dual-licensed: free for noncommercial use and
 sold under a separate commercial license (see [`LICENSING.md`](LICENSING.md)). For the Owner to
 offer both, every contribution must come with the rights below.

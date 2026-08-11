@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 # Copyright (c) 2026 idimus. Free for non-commercial use; commercial use requires a license.
 #
-# idimus_hw web monitor. Serves a self-contained dashboard (load graphs + live values) and a
-# /api/data JSON endpoint backed by the idimus_hw C library, loaded via ctypes.
+# hardware_monitor_cpp web monitor. Serves a self-contained dashboard (load graphs + live values) and a
+# /api/data JSON endpoint backed by the hardware_monitor_cpp C library, loaded via ctypes.
 #
-# Run:  python idimus_server.py [--host 0.0.0.0] [--port 8000]
+# Run:  python hardware_monitor_server.py [--host 0.0.0.0] [--port 8000]
 # (For CPU temperature/power, run as administrator / root.)
 
 import argparse
@@ -19,7 +19,7 @@ WEB = os.path.join(HERE, "web")
 
 
 def load_library():
-    names = ["idimus_hw_c.dll", "libidimus_hw_c.so", "libidimus_hw_c.dylib"]
+    names = ["hardware_monitor_cpp_c.dll", "libhardware_monitor_cpp_c.so", "libhardware_monitor_cpp_c.dylib"]
     for n in names:
         path = os.path.join(HERE, n)
         if os.path.exists(path):
@@ -29,7 +29,7 @@ def load_library():
             lib.ihw_poll_json.argtypes = [ctypes.c_void_p]
             lib.ihw_destroy.argtypes = [ctypes.c_void_p]
             return lib
-    sys.exit("Could not find the idimus_hw shared library next to this script (%s)." % ", ".join(names))
+    sys.exit("Could not find the hardware_monitor_cpp shared library next to this script (%s)." % ", ".join(names))
 
 
 LIB = load_library()
@@ -71,12 +71,12 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="idimus_hw web monitor")
+    ap = argparse.ArgumentParser(description="hardware_monitor_cpp web monitor")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8000)
     args = ap.parse_args()
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
-    print("idimus_hw web monitor on http://%s:%d  (Ctrl+C to stop)" % (args.host, args.port))
+    print("hardware_monitor_cpp web monitor on http://%s:%d  (Ctrl+C to stop)" % (args.host, args.port))
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

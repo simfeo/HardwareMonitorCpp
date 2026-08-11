@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 // Copyright (c) 2026 idimus. Free for non-commercial use; commercial use requires a license.
 //
-// C ABI around idimus_hw for loading from Python via ctypes. Exposes create/destroy and a
-// poll that returns the current snapshot as a JSON string.
+// C ABI around hardware_monitor_cpp for loading from Python via ctypes. Exposes
+// create/destroy and a poll that returns the current snapshot as a JSON string.
 #include <cstdio>
 #include <string>
 
-#include "idimus_hw/idimus_hw.hpp"
+#include "hardware_monitor_cpp/hardware_monitor_cpp.hpp"
 
-using namespace idimus_hw;
+using namespace hardware_monitor_cpp;
 
 namespace
 {

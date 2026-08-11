@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 // Copyright (c) 2026 idimus. Free for non-commercial use; commercial use requires a license.
 //
-// idimus_hw — device identity and descriptive metadata.
+// hardware_monitor_cpp — device identity and descriptive metadata.
 #pragma once
 
 #include <cstdint>
 #include <map>
 #include <string>
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 
 enum class DeviceKind
@@ -59,4 +59,4 @@ struct DeviceInfo
     std::map<std::string, std::string> attributes; // free-form: cores, capacity, serial, ...
 };
 
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp

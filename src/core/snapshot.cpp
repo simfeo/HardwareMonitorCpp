@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 // Copyright (c) 2026 idimus. Free for non-commercial use; commercial use requires a license.
-#include "idimus_hw/snapshot.hpp"
+#include "hardware_monitor_cpp/snapshot.hpp"
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 
 std::vector<Reading> Snapshot::forDevice(const DeviceId& id) const
@@ -43,4 +43,4 @@ const DeviceInfo* Snapshot::device(const DeviceId& id) const
     return nullptr;
 }
 
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp

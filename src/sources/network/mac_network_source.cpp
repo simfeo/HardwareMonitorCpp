@@ -11,7 +11,7 @@
 #include <net/if_dl.h>
 #include <net/if_types.h>
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 namespace sources
 {
@@ -123,6 +123,6 @@ void MacNetworkSource::sample(std::vector<Reading>& out)
 }
 
 } // namespace sources
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp
 
 #endif // __APPLE__

@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 namespace mac
 {
@@ -38,4 +38,4 @@ private:
 };
 
 } // namespace mac
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp

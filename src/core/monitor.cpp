@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 // Copyright (c) 2026 idimus. Free for non-commercial use; commercial use requires a license.
-#include "idimus_hw/monitor.hpp"
+#include "hardware_monitor_cpp/monitor.hpp"
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 
 void Monitor::add(std::unique_ptr<Source> source)
@@ -48,4 +48,4 @@ Snapshot Monitor::poll()
     return Snapshot(devices_, std::move(readings));
 }
 
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp

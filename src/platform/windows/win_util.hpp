@@ -11,7 +11,7 @@
 
 #include <windows.h>
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 namespace win
 {
@@ -57,6 +57,6 @@ inline uint32_t regDword(HKEY root, const wchar_t* subkey, const wchar_t* value)
 }
 
 } // namespace win
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp
 
 #endif // _WIN32

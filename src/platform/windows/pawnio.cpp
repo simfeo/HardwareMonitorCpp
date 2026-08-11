@@ -10,7 +10,7 @@
 
 #include <windows.h>
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 namespace win
 {
@@ -33,12 +33,12 @@ std::wstring exeDir()
     return slash == std::wstring::npos ? std::wstring() : p.substr(0, slash);
 }
 
-// Search order for a signed module: $IDIMUS_PAWNIO_DIR, <exe>\modules, <exe>.
+// Search order for a signed module: $HARDWARE_MONITOR_CPP_PAWNIO_DIR, <exe>\modules, <exe>.
 std::wstring findModule(const std::wstring& fileName)
 {
     std::vector<std::wstring> dirs;
     wchar_t env[1024];
-    DWORD n = GetEnvironmentVariableW(L"IDIMUS_PAWNIO_DIR", env, 1024);
+    DWORD n = GetEnvironmentVariableW(L"HARDWARE_MONITOR_CPP_PAWNIO_DIR", env, 1024);
     if (n > 0 && n < 1024)
     {
         dirs.emplace_back(env, n);
@@ -192,6 +192,6 @@ bool PawnIo::readSmn(uint32_t address, uint64_t& value)
 }
 
 } // namespace win
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp
 
 #endif // _WIN32

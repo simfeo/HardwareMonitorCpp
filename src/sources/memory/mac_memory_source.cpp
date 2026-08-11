@@ -9,7 +9,7 @@
 #include <mach/mach.h>
 #include <sys/sysctl.h>
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 namespace sources
 {
@@ -79,6 +79,6 @@ void MacMemorySource::sample(std::vector<Reading>& out)
 }
 
 } // namespace sources
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp
 
 #endif // __APPLE__

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
-"""Build the idimus_hw core static library (and the idimus_hw_dump example).
+"""Build the hardware_monitor_cpp core static library (and the hardware_monitor_cpp_dump example).
 
 Usage:  python build_lib.py
 
 On Windows the matching signed PawnIO module is installed next to the built
-example so `idimus_hw_dump` can read CPU temperature/power out of the box.
+example so `hardware_monitor_cpp_dump` can read CPU temperature/power out of the box.
 """
 import os
 import sys
@@ -15,8 +15,8 @@ from build_common import ROOT, cmake_build, find_output, install_pawnio
 def main():
     build_dir = cmake_build(".", "build")
 
-    lib = find_output(build_dir, ["idimus_hw.lib", "libidimus_hw.a"])
-    dump = find_output(build_dir, ["idimus_hw_dump.exe", "idimus_hw_dump"])
+    lib = find_output(build_dir, ["hardware_monitor_cpp.lib", "libhardware_monitor_cpp.a"])
+    dump = find_output(build_dir, ["hardware_monitor_cpp_dump.exe", "hardware_monitor_cpp_dump"])
 
     if dump:
         # Modules must sit next to the executable that loads them.
@@ -27,7 +27,7 @@ def main():
         print(f"    static library : {lib}")
     if dump:
         print(f"    example dump   : {dump}")
-    print(f"    public headers : {os.path.join(ROOT, 'include', 'idimus_hw')}")
+    print(f"    public headers : {os.path.join(ROOT, 'include', 'hardware_monitor_cpp')}")
     return 0
 
 

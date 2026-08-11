@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 namespace lnx
 {
@@ -80,6 +80,6 @@ inline bool exists(const std::string& path)
 }
 
 } // namespace lnx
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp
 
 #endif // __linux__

@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 // Copyright (c) 2026 idimus. Free for non-commercial use; commercial use requires a license.
 //
-// idimus_hw — a telemetry source: one data origin (a subsystem on one platform). Sources own any
-// state needed for rate/delta metrics and append readings on each sample.
+// hardware_monitor_cpp — a telemetry source: one data origin (a subsystem on one
+// platform). Sources own any state needed for rate/delta metrics and append readings on
+// each sample.
 #pragma once
 
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "idimus_hw/device.hpp"
-#include "idimus_hw/reading.hpp"
+#include "hardware_monitor_cpp/device.hpp"
+#include "hardware_monitor_cpp/reading.hpp"
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 
 class Source
@@ -34,4 +35,4 @@ public:
 // Builds the set of sources appropriate to the host platform (implemented per-OS).
 std::vector<std::unique_ptr<Source>> createPlatformSources();
 
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp

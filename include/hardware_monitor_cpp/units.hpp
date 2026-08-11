@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 // Copyright (c) 2026 idimus. Free for non-commercial use; commercial use requires a license.
 //
-// idimus_hw — physical quantities and units for hardware telemetry readings.
+// hardware_monitor_cpp — physical quantities and units for hardware telemetry readings.
 #pragma once
 
-namespace idimus_hw
+namespace hardware_monitor_cpp
 {
 
 // The semantic kind of a measured value. Kept orthogonal to Unit so a consumer can group/format
@@ -68,4 +68,4 @@ inline const char* unitSymbol(Unit u)
     return "";
 }
 
-} // namespace idimus_hw
+} // namespace hardware_monitor_cpp
