@@ -147,7 +147,7 @@ void LinuxDrmGpuSource::sample(std::vector<Reading>& out)
             }
             if (lnx::readI64(c.hwmonPath + "/power1_average", v) && v > 0)
             {
-                emit(Quantity::Power, Unit::Watt, "Power", v / 1e6); // µW -> W
+                emit(Quantity::Power, Unit::Watt, "Power", v / 1e6); // mW -> W
             }
             uint64_t hz = 0;
             if (lnx::readU64(c.hwmonPath + "/freq1_input", hz) && hz > 0)

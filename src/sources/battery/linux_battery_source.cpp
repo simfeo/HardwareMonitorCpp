@@ -60,23 +60,23 @@ void LinuxBatterySource::sample(std::vector<Reading>& out)
 
         double voltageV = 0;
         if (lnx::readI64(p + "/voltage_now", v))
-        { // µV
+        { // mV
             voltageV = v / 1e6;
             emit(Quantity::Voltage, Unit::Volt, "Voltage", voltageV);
         }
 
-        // Capacities: prefer energy_* (µWh); else charge_* (µAh) * voltage.
+        // Capacities: prefer energy_* (mWh); else charge_* (mAh) * voltage.
         auto energyMwh = [&](const char* energyKey, const char* chargeKey, const std::string& ch)
         {
             int64_t e = 0;
             if (lnx::readI64(p + energyKey, e))
             {
-                emit(Quantity::Capacity, Unit::MilliwattHour, ch, e / 1000.0); // µWh -> mWh
+                emit(Quantity::Capacity, Unit::MilliwattHour, ch, e / 1000.0); // mWh -> mWh
             }
             else if (lnx::readI64(p + chargeKey, e) && voltageV > 0)
             {
                 emit(Quantity::Capacity, Unit::MilliwattHour, ch,
-                     (e / 1000.0) * voltageV); // µAh->mAh*V
+                     (e / 1000.0) * voltageV); // mAh->mAh*V
             }
         };
         energyMwh("/energy_full_design", "/charge_full_design", "Design Capacity");
@@ -84,11 +84,11 @@ void LinuxBatterySource::sample(std::vector<Reading>& out)
         energyMwh("/energy_now", "/charge_now", "Remaining Capacity");
 
         if (lnx::readI64(p + "/power_now", v))
-        { // µW
+        { // mW
             emit(Quantity::Power, Unit::Watt, "Power", std::abs(v) / 1e6);
         }
         else if (lnx::readI64(p + "/current_now", v) && voltageV > 0)
-        { // µA
+        { // mA
             double a = std::abs(v) / 1e6;
             emit(Quantity::Current, Unit::Ampere, "Current", a);
             emit(Quantity::Power, Unit::Watt, "Power", a * voltageV);
