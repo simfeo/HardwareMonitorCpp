@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 // Copyright (c) 2026 idimus. Free for non-commercial use; commercial use requires a license.
 //
-// hardware_monitor_cpp — a telemetry source: one data origin (a subsystem on one
+// hardware_monitor_cpp - a telemetry source: one data origin (a subsystem on one
 // platform). Sources own any state needed for rate/delta metrics and append readings on
 // each sample.
 #pragma once

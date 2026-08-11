@@ -41,7 +41,7 @@ double nowSeconds()
         .count();
 }
 
-// System processor performance info (NtQuerySystemInformation class 8). Declared locally — it is
+// System processor performance info (NtQuerySystemInformation class 8). Declared locally - it is
 // not in the public SDK headers, but the layout is a stable documented fact.
 using NtStatus = LONG;
 extern "C" NtStatus WINAPI NtQuerySystemInformation(ULONG, PVOID, ULONG, PULONG);

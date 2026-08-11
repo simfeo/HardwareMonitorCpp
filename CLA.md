@@ -6,7 +6,7 @@ sold under a separate commercial license (see [`LICENSING.md`](LICENSING.md)). F
 offer both, every contribution must come with the rights below.
 
 By submitting a contribution (a pull request, patch, or any code, documentation, or other
-material — a "Contribution") to the Project, you agree to the following. If you are contributing
+material - a "Contribution") to the Project, you agree to the following. If you are contributing
 on behalf of a company, you confirm you are authorized to bind it, and "you" means that entity.
 
 ## 1. Copyright license
@@ -18,7 +18,7 @@ and distribute your Contribution and such derivative works.
 ## 2. Right to relicense (dual licensing)
 
 You agree the Owner **may license your Contribution, and the Project as a whole, under any terms
-the Owner chooses** — including the PolyForm Noncommercial license, a paid commercial license, or
+the Owner chooses** - including the PolyForm Noncommercial license, a paid commercial license, or
 other proprietary or open-source terms. This right is the reason the Project can be offered both
 free for noncommercial use and commercially.
 
@@ -32,7 +32,7 @@ infringed by your Contribution alone or combined with the Project.
 ## 4. You retain ownership
 
 You keep all right, title, and interest in your Contribution. This agreement is a license, **not
-an assignment** — you may use your Contribution for any other purpose.
+an assignment** - you may use your Contribution for any other purpose.
 
 ## 5. Your representations
 

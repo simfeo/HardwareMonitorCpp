@@ -2,11 +2,11 @@
 
 hardware_monitor_cpp is **dual-licensed**. Choose the license that fits your use.
 
-## 1. Open license — PolyForm Noncommercial 1.0.0 (default, free)
+## 1. Open license - PolyForm Noncommercial 1.0.0 (default, free)
 
 The source in this repository is provided under the **PolyForm Noncommercial License 1.0.0**
 (see [`LICENSE.md`](LICENSE.md)). You may use, modify, and distribute it **at no cost for any
-noncommercial purpose** — personal projects, research, education, evaluation, hobby use, and use
+noncommercial purpose** - personal projects, research, education, evaluation, hobby use, and use
 by noncommercial organizations.
 
 PolyForm Noncommercial permits everything a normal open-source license does **except commercial
@@ -25,7 +25,7 @@ not limited to:
 The commercial license is a paid, per-organization grant that lifts the noncommercial restriction
 and may add support terms. It does not affect the rights of noncommercial users.
 
-**To obtain a commercial license**, contact: **idimus — &lt;simidimus+hw@gmail.com&gt;**
+**To obtain a commercial license**, contact: **idimus - &lt;simidimus+hw@gmail.com&gt;**
 *(replace with your real contact before publishing).*
 
 ## Which do I need? (quick guide)
@@ -44,5 +44,5 @@ lets the project keep offering both the free and the commercial license.
 
 ## Third-party components
 
-Bundled or referenced third-party components keep their own licenses — see [`NOTICE.md`](NOTICE.md).
+Bundled or referenced third-party components keep their own licenses - see [`NOTICE.md`](NOTICE.md).
 A commercial license for hardware_monitor_cpp does not relicense those components.

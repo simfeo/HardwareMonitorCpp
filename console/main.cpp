@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 // Copyright (c) 2026 idimus. Free for non-commercial use; commercial use requires a license.
 //
-// hardware_monitor_console — live console hardware monitor with a tabbed, htop-style TUI.
+// hardware_monitor_console - live console hardware monitor with a tabbed, htop-style TUI.
 //
 // The screen shows one hardware tab at a time with its metric drawn as a scrolling time graph;
 // a tab bar sits at the bottom. Controls:
@@ -13,7 +13,7 @@
 //   GPU/…      Load          <->  Temperature
 //
 // Rendering: we use the terminal's alternate screen buffer and compose each frame into a single
-// string, repainted in place from the home position with per-line erase — so there is no flicker.
+// string, repainted in place from the home position with per-line erase - so there is no flicker.
 #include <algorithm>
 #include <chrono>
 #include <climits>
@@ -264,7 +264,7 @@ int pollKey(int timeoutMs)
     {
         return K_NONE;
     }
-    if (c == 27) // ESC — arrow keys arrive as ESC [ <A-D>
+    if (c == 27) // ESC - arrow keys arrive as ESC [ <A-D>
     {
         unsigned char seq[2] = {0, 0};
         if (read(STDIN_FILENO, &seq[0], 1) == 1 && seq[0] == '[' &&
@@ -460,7 +460,7 @@ void saveSettings()
     {
         return;
     }
-    f << "# hardware_monitor_console settings — also editable from the Settings tab.\n";
+    f << "# hardware_monitor_console settings - also editable from the Settings tab.\n";
     f << "# true = show the device, false = hide it.\n\n";
     f << "options:\n";
     f << "  cpu_cores: " << g_settings.cpuCoreStyle << "\n";
@@ -535,7 +535,7 @@ std::string bytesSize(double v)
     return humanBytes(v, u, 4);
 }
 
-// A colored htop-style bar: [|||||||         42.0%] — used by the overview screen.
+// A colored htop-style bar: [|||||||         42.0%] - used by the overview screen.
 std::string bar(double pct, int width = 24)
 {
     if (pct < 0)
@@ -770,7 +770,7 @@ const Reading* cpuClock(const DevView& d)
     return c;
 }
 
-// "1234 MHz" style trailing metric, or grey n/a — used by the overview screen.
+// "1234 MHz" style trailing metric, or grey n/a - used by the overview screen.
 std::string metric(const Reading* r, const char* fmt, double scale = 1.0)
 {
     if (!r)

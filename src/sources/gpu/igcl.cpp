@@ -100,7 +100,7 @@ struct PowerTelemetry
     TelemetryItem psu[CTL_PSU_COUNT];
 };
 
-// ctl_device_adapter_properties_t — only the leading fields we read (name + type). Over-sized
+// ctl_device_adapter_properties_t - only the leading fields we read (name + type). Over-sized
 // buffer keeps us safe if the real struct is larger; we set Size to our own struct size.
 struct VersionInfo
 {

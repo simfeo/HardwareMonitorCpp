@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 // Copyright (c) 2026 idimus. Free for non-commercial use; commercial use requires a license.
 //
-// hardware_monitor_cpp — a single telemetry reading (the atomic unit of this
+// hardware_monitor_cpp - a single telemetry reading (the atomic unit of this
 // data-oriented model).
 #pragma once
 

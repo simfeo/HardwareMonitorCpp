@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 // Copyright (c) 2026 idimus. Free for non-commercial use; commercial use requires a license.
 //
-// hardware_monitor_cpp — an immutable point-in-time view: the device table plus every reading.
+// hardware_monitor_cpp - an immutable point-in-time view: the device table plus every reading.
 #pragma once
 
 #include <vector>

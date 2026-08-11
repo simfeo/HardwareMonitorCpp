@@ -65,7 +65,7 @@ std::wstring findModule(const std::wstring& fileName)
 PawnIo::PawnIo()
 {
     // PawnIOLib.dll installs under %ProgramFiles%\PawnIO, which is not on the default DLL search
-    // path — try the install location(s) as well as the bare name.
+    // path - try the install location(s) as well as the bare name.
     lib_ = LoadLibraryW(L"PawnIOLib.dll");
     if (!lib_)
     {

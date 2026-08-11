@@ -23,7 +23,7 @@ constexpr uint8_t kCmdReadBytes = 5;
 constexpr uint8_t kCmdReadIndex = 8;
 constexpr uint8_t kCmdReadKeyInfo = 9;
 
-// SMC parameter block. NATURAL alignment is required — the kernel rejects a packed layout.
+// SMC parameter block. NATURAL alignment is required - the kernel rejects a packed layout.
 struct KeyInfo
 {
     uint32_t dataSize;

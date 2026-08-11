@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 // Copyright (c) 2026 idimus. Free for non-commercial use; commercial use requires a license.
 //
-// hardware_monitor_cpp — the façade: holds the sources, enumerates devices once, and
+// hardware_monitor_cpp - the façade: holds the sources, enumerates devices once, and
 // produces snapshots.
 #pragma once
 

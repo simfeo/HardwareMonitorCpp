@@ -2,7 +2,7 @@
 // Copyright (c) 2026 idimus. Free for non-commercial use; commercial use requires a license.
 //
 // Windows CPU: per-core/total load (system processor performance counters), clock (processor
-// power information), and — on Intel with PawnIO present — package temperature (digital thermal
+// power information), and - on Intel with PawnIO present - package temperature (digital thermal
 // sensor) and RAPL package/cores/uncore power.
 #pragma once
 

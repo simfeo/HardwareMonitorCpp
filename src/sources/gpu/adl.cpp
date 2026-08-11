@@ -21,7 +21,7 @@ constexpr int ADL_OK = 0;
 constexpr int ADL_VENDOR_AMD = 1002;
 constexpr int ADL_PMLOG_MAX_SENSORS = 256;
 
-// ADL AdapterInfo (Windows layout) — full struct so the array stride is correct.
+// ADL AdapterInfo (Windows layout) - full struct so the array stride is correct.
 struct AdapterInfo
 {
     int iSize;

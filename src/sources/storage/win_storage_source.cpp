@@ -55,7 +55,7 @@ std::vector<std::pair<std::string, double>> readArray(PDH_HCOUNTER counter)
     return result;
 }
 
-// PhysicalDisk instance names look like "0 C: D:" — the leading integer is the disk number.
+// PhysicalDisk instance names look like "0 C: D:" - the leading integer is the disk number.
 // Returns -1 for "_Total" or anything without a leading digit.
 int diskNumberOf(const std::string& instance)
 {
