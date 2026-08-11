@@ -74,11 +74,25 @@ branches on device type, which is the point of the flat model.
 
 ## Status
 
-| Platform | Sources |
-| --- | --- |
-| **macOS / Apple Silicon** | ✅ CPU (load, temp, package/ANE power, E/P-cluster frequency, fans), GPU (util, memory, temp, power, frequency), memory (used/avail/swap), network (per-interface bytes + throughput), storage (disks, size, free), battery (charge, capacities, health, voltage, current/power, temp, cycles). Verified on M1 Pro. |
-| **Windows** | ✅ CPU — Intel **and** AMD: per-core/total load, clock, name; package/Tctl temperature + RAPL power via ring-0 MSR through PawnIO. GPU — NVIDIA via NVML, Intel integrated via DXGI+PDH (load + memory), AMD via ADL and Intel Arc via IGCL (temp/clocks/activity/power/fan/VRAM). Memory; network; storage (disks, size, free, NVMe/ATA temperature); battery + UPS. **Verified on real hardware:** CPU temp/power on i9-9900K, i7-8550U, **and Ryzen 7 3700X**; NVIDIA GPU (RTX 2080/3060 Ti); **Intel integrated GPU (UHD 620)**; laptop battery + desktop UPS. The **AMD Radeon (ADL)** and **Intel Arc (IGCL)** discrete-GPU telemetry paths are implemented from SDK facts but **not yet verified on Radeon/Arc hardware**. |
-| **Linux** | ✅ CPU (per-core/total load via /proc/stat, cpufreq clock, hwmon temperature, RAPL package power), memory (/proc/meminfo), network (/sys/class/net + throughput), storage (/sys/block, size, free, drive temperature), battery (/sys/class/power_supply), GPU — NVIDIA via NVML + AMD/Intel via /sys/class/drm + hwmon (busy %, VRAM, temps, fan, power, clocks). Verified on WSL2 (CPU load, memory, network, NVIDIA); hwmon/RAPL/storage/battery paths are for bare-metal Linux. |
+| | 🍏 **macOS** (Apple Silicon) | 🪟 **Windows** | 🐧 **Linux** |
+| :--- | :--- | :--- | :--- |
+| **CPU** | ✅ load, temp, package/ANE power, E/P-cluster clock, fans | ✅ load, clock, name — Intel **and** AMD; package/Tctl temp + RAPL power via ring-0 MSR (PawnIO) | ✅ load (`/proc/stat`), clock (cpufreq), temp (hwmon), package power (RAPL) |
+| **GPU** | ✅ util, memory, temp, power, clock | ✅ NVIDIA (NVML), Intel iGPU (DXGI+PDH); AMD (ADL) + Intel Arc (IGCL) <sup>1</sup> | ✅ NVIDIA (NVML); AMD/Intel via `/sys/class/drm` + hwmon |
+| **RAM** | ✅ used, available, swap | ✅ used, available, swap + commit charge | ✅ used, available, swap (`/proc/meminfo`) |
+| **Storage** | ✅ disks, size, free | ✅ disks, size, free, NVMe/ATA temp | ✅ disks, size, free, drive temp (`/sys/block`) |
+| **Network** | ✅ per-interface bytes + throughput | ✅ per-interface bytes + throughput | ✅ per-interface bytes + throughput (`/sys/class/net`) |
+| **Battery** | ✅ charge, capacities, health, voltage, current/power, temp, cycles, time-to-full/empty | ✅ charge, capacities, health, voltage, current/power, temp, runtime — **+ UPS** | ✅ charge, capacities, voltage, current/power, temp, cycles |
+
+**Verified on real hardware**
+
+- **macOS** — Apple M1 Pro.
+- **Windows** — CPU temp/power on **i9-9900K**, **i7-8550U** and **Ryzen 7 3700X**; NVIDIA
+  **RTX 2080 / 3060 Ti**; Intel integrated **UHD 620**; laptop battery + desktop UPS.
+- **Linux** — WSL2 (CPU load, memory, network, NVIDIA). The hwmon / RAPL / storage / battery
+  paths target bare-metal Linux.
+
+<sup>1</sup> AMD Radeon (ADL) and Intel Arc (IGCL) discrete-GPU telemetry is implemented from SDK
+facts but **not yet verified on Radeon/Arc hardware**.
 
 ## Applications
 
@@ -113,6 +127,23 @@ package power additionally need administrator/root (and PawnIO on Windows).
 
 ```sh
 git clone --recurse-submodules <repo>
+```
+
+The repo-root Python scripts are the easiest path — they configure and build with CMake, then
+print where the artifacts landed. **On Windows they also download and install the signed PawnIO
+module matching your CPU**, so CPU temperature and package power work with no extra steps:
+
+```sh
+python build_lib.py        # core static library + hardware_monitor_cpp_dump example
+python build_console.py    # console/build/bin/hardware_monitor_console
+python build_server.py     # webserver/build/dist/ (library + server + web assets)
+```
+
+They need only Python 3 and CMake — no packages to install.
+
+Plain CMake works too, if you would rather drive the build yourself:
+
+```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ./build/hardware_monitor_cpp_dump
