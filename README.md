@@ -1,7 +1,20 @@
 # hardware_monitor_cpp
 
+<p align="center">
+  <img src="https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus&logoColor=white" alt="C++17">
+  <img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-4c8eda" alt="Platforms: macOS, Windows, Linux">
+  <img src="https://img.shields.io/badge/CMake-3.15%2B-064F8C?logo=cmake&logoColor=white" alt="CMake 3.15+">
+  <img src="https://img.shields.io/badge/dependencies-none-4caf50" alt="No third-party dependencies">
+  <img src="https://img.shields.io/badge/license-PolyForm%20NC%20%2F%20Commercial-8957e5" alt="Dual-licensed">
+</p>
+
 A cross-platform hardware-telemetry library with a small, data-oriented core. It exposes the
 machine's sensors as a flat, queryable stream of **readings** rather than an object tree.
+
+<p align="center">
+  <img src="docs/images/console-overview.png" width="900"
+       alt="Console monitor overview: CPU, GPU, memory, disk and network on one screen">
+</p>
 
 > [!IMPORTANT]
 > **No component tree.** Most monitoring libraries hand you `Machine → CPU → Core → Sensor`
@@ -94,6 +107,15 @@ Two ready-to-ship monitors live in their own top-level folders, each with its ow
   cd console && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
   ./build/bin/hardware_monitor_console 2
   ```
+
+  Tabs cycle with `n`/`p`, views with `t`, and `-`/`=` zoom the time axis from live out to
+  minutes per column:
+
+  | Overall load | Per-core grid |
+  | :--- | :--- |
+  | <img src="docs/images/console-cpu.png" alt="CPU load graph"> | <img src="docs/images/console-cpu-cores.png" alt="Per-core grid"> |
+  | **Thermals** | **GPU** |
+  | <img src="docs/images/console-cpu-temp.png" alt="CPU temperature graph"> | <img src="docs/images/console-gpu.png" alt="GPU load graph"> |
 - **`webserver/`** - a Python dashboard. CMake builds a small C-ABI shared library wrapping
   hardware_monitor_cpp and assembles `build/dist/` (the library + `hardware_monitor_server.py` + `web/`). The server
   uses only the standard-library `http.server` and loads the library via `ctypes`; the page draws
@@ -102,6 +124,11 @@ Two ready-to-ship monitors live in their own top-level folders, each with its ow
   cd webserver && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
   cd build/dist && python hardware_monitor_server.py        # http://127.0.0.1:8000
   ```
+
+  <p align="center">
+    <img src="docs/images/web-dashboard.png" width="900"
+         alt="Web dashboard: per-device cards for CPU, GPU, memory, disks and network">
+  </p>
 
 Both run without privileges for load/clock/memory/network/storage/GPU/battery; CPU temperature and
 package power additionally need administrator/root (and PawnIO on Windows).
