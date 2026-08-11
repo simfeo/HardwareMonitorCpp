@@ -136,7 +136,7 @@ def install_pawnio(dest_dir):
     print(f"[*] CPU -> {module}.bin; fetching PawnIO modules {ver}", flush=True)
     with tempfile.TemporaryDirectory() as tmp:
         zip_path = os.path.join(tmp, "pawnio.zip")
-        req = urllib.request.Request(url, headers={"User-Agent": "idimus-build"})
+        req = urllib.request.Request(url, headers={"User-Agent": "hardware-monitor-cpp-build"})
         with urllib.request.urlopen(req) as resp, open(zip_path, "wb") as f:
             shutil.copyfileobj(resp, f)
         with zipfile.ZipFile(zip_path) as zf:

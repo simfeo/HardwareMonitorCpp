@@ -12,6 +12,7 @@ import argparse
 import ctypes
 import os
 import sys
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -34,6 +35,12 @@ def load_library():
 
 LIB = load_library()
 HANDLE = LIB.hmc_create()
+
+# Requests are served on their own threads and ctypes drops the GIL for the duration of a
+# foreign call, so polls really do overlap. The snapshot buffer lives in the handle and is
+# rewritten in place by each poll, which would let one request clear the string another is
+# still reading. One handle means one poll at a time.
+POLL_LOCK = threading.Lock()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -60,7 +67,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/" or path == "/index.html":
             self._send_file("index.html", "text/html; charset=utf-8")
         elif path == "/api/data":
-            data = LIB.hmc_poll_json(HANDLE) or b"{}"
+            with POLL_LOCK:
+                data = LIB.hmc_poll_json(HANDLE) or b"{}"
             self._send(200, "application/json", data)
         else:
             # serve any other static asset from web/

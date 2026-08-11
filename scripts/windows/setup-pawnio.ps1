@@ -12,7 +12,7 @@
     The signed module binary is a release artifact of namazso/PawnIO.Modules and is
     NOT bundled with this repo. This script downloads it (pinned to the same version
     as the third_party/pawnio-modules submodule) and copies the module matching your
-    CPU vendor into a 'modules' folder next to each built idimus executable.
+    CPU vendor into a 'modules' folder next to each built hardware_monitor_cpp executable.
 
     Intel CPUs use IntelMSR.bin; AMD (Family 17h+ / Zen) use AMDFamily17.bin.
 
@@ -26,7 +26,7 @@
 
 .PARAMETER Destination
     Executable directory to install into. A 'modules' subfolder is created inside it
-    and the .bin placed there. If omitted, the script auto-discovers built idimus
+    and the .bin placed there. If omitted, the script auto-discovers built hardware_monitor_cpp
     executables under the repo and installs next to each.
 
 .PARAMETER Module
@@ -106,7 +106,7 @@ $targets = @()
 if ($Destination) {
     $targets += (Resolve-Path $Destination).Path
 } else {
-    Info "Discovering built idimus executables under $RepoRoot ..."
+    Info "Discovering built hardware_monitor_cpp executables under $RepoRoot ..."
     $exes = Get-ChildItem $RepoRoot -Recurse -File -Include "hardware_monitor_console.exe","hardware_monitor_cpp_dump.exe" -ErrorAction SilentlyContinue
     $targets = $exes | ForEach-Object { $_.DirectoryName } | Sort-Object -Unique
     if (-not $targets) {

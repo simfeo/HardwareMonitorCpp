@@ -74,6 +74,11 @@ device, attribute and reading, in ~20 lines - see
 [`examples/hardware_monitor_cpp_dump.cpp`](examples/hardware_monitor_cpp_dump.cpp); it never
 branches on device type, which is the point of the flat model.
 
+The [documentation](docs/) goes further: [usage](docs/usage.md) for the API in depth,
+[building](docs/building.md) for build options and embedding, [bindings](docs/bindings.md) for
+driving the library from Python or any C FFI, and [PawnIO](docs/pawnio.md) for Windows ring-0
+setup.
+
 ## Status
 
 | | 🍏 **macOS** (Apple Silicon) | 🪟 **Windows** | 🐧 **Linux** |
