@@ -3,8 +3,22 @@
 A cross-platform hardware-telemetry library with a small, data-oriented core. It exposes the
 machine's sensors as a flat, queryable stream of **readings** rather than an object tree.
 
-Only non-copyrightable facts are reused (OS API signatures, IOCTL codes, MSR/SMC keys, JEDEC SPD
-layouts, NVMe offsets, PCI IDs).
+> [!IMPORTANT]
+> **No component tree.** Most monitoring libraries hand you `Machine → CPU → Core → Sensor`
+> and make you walk it. `poll()` returns a flat `Reading` array instead, so "every temperature
+> on this machine" is one filter call, not a recursive descent — and the whole snapshot
+> serializes to JSON without a custom visitor.
+
+## Why this library?
+
+- **No third-party dependencies.** The core needs only the C++ standard library and the OS's own
+  APIs (IOKit/CoreFoundation, Win32, `/proc` and `/sys`). NVIDIA's NVML and PawnIO are loaded
+  dynamically *if present* — never linked, never required to build.
+- **No elevated privileges on the common path.** Load, clock, memory, network, storage, GPU and
+  battery all read as an ordinary user. Only CPU package temperature/power (ring-0 MSR) and some
+  macOS SMC sensors need administrator/root.
+- **Independent implementation.** Only non-copyrightable facts are reused (OS API signatures,
+  IOCTL codes, MSR/SMC keys, JEDEC SPD layouts, NVMe offsets, PCI IDs). See [`NOTICE.md`](NOTICE.md).
 
 ## License
 
@@ -29,16 +43,34 @@ DeviceInfo / DeviceId  stable (kind, ordinal) identity + metadata
 
 ```cpp
 #include "hardware_monitor_cpp/hardware_monitor_cpp.hpp"
+#include <cstdio>
 using namespace hardware_monitor_cpp;
 
 Monitor m;
 m.addPlatformSources();
 m.open();
-m.poll();                          // prime delta metrics
+m.poll();                          // prime delta metrics (load, throughput)
 Snapshot s = m.poll();             // sample
+
 for (const Reading& r : s.forQuantity(Quantity::Temperature))
-    /* r.device, r.channel, r.value, r.unit */;
+{
+    const DeviceInfo* d = s.device(r.device);  // DeviceId is a handle; names live here
+    std::printf("%-18s %-12s %6.1f %s\n", d->name.c_str(), r.channel.c_str(), r.value,
+                unitSymbol(r.unit));
+}
 ```
+
+```
+Apple M1 Pro       Cores (avg)    50.4 °C
+Apple M1 Pro       Cores (max)    61.0 °C
+Apple M1 Pro GPU   Die            46.9 °C
+Battery            Temperature    30.8 °C
+```
+
+Swap `forQuantity` for `forDevice(id)` to slice the other way. For a complete report — every
+device, attribute and reading, in ~20 lines — see
+[`examples/hardware_monitor_cpp_dump.cpp`](examples/hardware_monitor_cpp_dump.cpp); it never
+branches on device type, which is the point of the flat model.
 
 ## Status
 
