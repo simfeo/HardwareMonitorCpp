@@ -314,7 +314,7 @@ void WinCpuSource::sample(std::vector<Reading>& out)
     // Rated maximum frequency. Group-limited on a multi-group machine - it only fills the calling
     // thread's group - but MaxMhz is a static rated value, identical on every socket.
     ULONG ratedMaxMhz = 0;
-    std::vector<ProcPower> power(size_t(n));
+    std::vector<ProcPower> power(static_cast<size_t>(n));
     if (CallNtPowerInformation(ProcessorInformation, nullptr, 0, power.data(),
                                ULONG(power.size() * sizeof(ProcPower))) == 0)
     {
