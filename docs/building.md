@@ -51,15 +51,19 @@ Building this way on Windows skips the automatic PawnIO module install. Run
 **macOS.** Links `IOKit` and `CoreFoundation`. Verified on Apple Silicon. Some SMC sensors
 (temperatures, fans) only report when running as root; everything else works as a normal user.
 
-**Windows.** Links `advapi32`, `iphlpapi`, `setupapi`, `powrprof`, `ntdll`, `dxgi` and `pdh`,
-all part of the Windows SDK. NVIDIA telemetry goes through NVML and Intel/AMD discrete GPUs
-through IGCL/ADL; each is loaded dynamically at runtime and simply stays absent when the vendor
-runtime is not installed. CPU temperature and package power need PawnIO.
+**Windows.** Links `advapi32`, `iphlpapi`, `setupapi`, `powrprof`, `ntdll`, `dxgi`, `pdh`,
+`ole32`, `oleaut32` and `wbemuuid`, all part of the Windows SDK. NVIDIA telemetry goes through
+NVML and Intel/AMD discrete GPUs through IGCL/ADL; each is loaded dynamically at runtime and
+simply stays absent when the vendor runtime is not installed. CPU package temperature and power
+need PawnIO; without it temperature falls back to ACPI thermal zones over WMI. x64 and ARM64 both
+build from the same sources - see [PawnIO on Windows](pawnio.md).
 
 **Linux.** Links `pthread` and `dl`. Most sources read `/proc` and `/sys` directly. NVML is
 loaded with `dlopen` when present. The hwmon, RAPL, storage-temperature and battery paths target
 bare-metal Linux; under WSL2 the kernel does not expose them, so those channels are absent while
-CPU load, memory, network and NVIDIA GPU still work.
+CPU load, memory, network and NVIDIA GPU still work. x86_64 and aarch64 build from the same
+sources; on ARM boards CPU temperature comes from the SoC hwmon or a `/sys/class/thermal` zone,
+and package power is absent because RAPL is x86-only.
 
 ## Submodules
 

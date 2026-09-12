@@ -317,6 +317,16 @@ void WinCpuSource::sample(std::vector<Reading>& out)
         }
         readRapl(out, MSR_AMD_PKG_ENERGY, amdPkg_, "Package Power", energyJoule_);
     }
+    else
+    {
+        // No ring-0 MSR path: ARM64, or x86 without PawnIO. ACPI thermal zones are all that is
+        // left; there is no equivalent fallback for package power, so power stays absent.
+        double tC = 0;
+        if (acpi_.sample(tC))
+        {
+            emit(Quantity::Temperature, Unit::Celsius, "Thermal Zone", tC);
+        }
+    }
 }
 
 } // namespace sources

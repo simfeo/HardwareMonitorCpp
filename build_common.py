@@ -89,7 +89,8 @@ def _cpu_module():
     """Return the PawnIO module base name for this CPU, or None if N/A.
 
     Intel -> IntelMSR, AMD (Zen / Family 17h+) -> AMDFamily17. ARM64 has no
-    x86 MSRs, so there is no module (CPU temp/power stays unavailable).
+    x86 MSRs, so there is no module; the CPU source then falls back to ACPI
+    thermal zones for temperature, and package power stays unavailable.
     """
     arch = platform.machine().lower()
     if "arm" in arch or "aarch64" in arch:
@@ -123,7 +124,8 @@ def install_pawnio(dest_dir):
     if not module:
         print(
             "[!] No PawnIO module for this CPU/architecture; skipping.\n"
-            "    Load and clock still work; CPU temperature/power will read 'n/a'.",
+            "    Load and clock still work; temperature falls back to ACPI\n"
+            "    thermal zones, and package power will read 'n/a'.",
             flush=True,
         )
         return

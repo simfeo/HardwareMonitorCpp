@@ -2,8 +2,9 @@
 // Copyright (c) 2026 idimus. Free for non-commercial use; commercial use requires a license.
 //
 // Windows CPU: per-core/total load (system processor performance counters), clock (processor
-// power information), and - on Intel with PawnIO present - package temperature (digital thermal
-// sensor) and RAPL package/cores/uncore power.
+// power information), and - on Intel/AMD with PawnIO present - package temperature (digital
+// thermal sensor) and RAPL package/cores/uncore power. Without that ring-0 path (ARM64, or no
+// PawnIO) temperature falls back to ACPI thermal zones over WMI.
 #pragma once
 
 #include <cstdint>
@@ -11,6 +12,7 @@
 #include <vector>
 
 #include "hardware_monitor_cpp/source.hpp"
+#include "platform/windows/acpi_thermal.hpp"
 #include "platform/windows/pawnio.hpp"
 
 namespace hardware_monitor_cpp
@@ -58,6 +60,7 @@ private:
     std::vector<Ticks> prev_;
 
     win::PawnIo pawn_;
+    win::AcpiThermal acpi_; // driver-free temperature fallback when the MSR path is unavailable
     Vendor vendor_ = Vendor::Other;
     bool msr_ = false;          // ring-0 path active (module loaded + units read)
     double tjMax_ = 100.0;      // Intel

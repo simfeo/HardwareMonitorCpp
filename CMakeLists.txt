@@ -25,7 +25,8 @@ else()
 endif()
 
 if(WIN32)
-    target_link_libraries(hardware_monitor_cpp PUBLIC advapi32 iphlpapi setupapi powrprof ntdll dxgi pdh)
+    # ole32/oleaut32/wbemuuid: WMI client for the ACPI thermal zone fallback.
+    target_link_libraries(hardware_monitor_cpp PUBLIC advapi32 iphlpapi setupapi powrprof ntdll dxgi pdh ole32 oleaut32 wbemuuid)
 endif()
 
 if(UNIX AND NOT APPLE)

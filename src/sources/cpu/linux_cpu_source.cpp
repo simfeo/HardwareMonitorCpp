@@ -4,6 +4,7 @@
 
 #ifdef __linux__
 
+#include <cctype>
 #include <chrono>
 #include <fstream>
 #include <sstream>
@@ -43,14 +44,56 @@ std::string cpuModelName()
     return {};
 }
 
-// Finds the CPU temperature hwmon directory (coretemp / k10temp / zenpower).
+std::string toLower(std::string s)
+{
+    for (char& c : s)
+    {
+        c = char(tolower((unsigned char)c));
+    }
+    return s;
+}
+
+// Finds the CPU temperature hwmon directory. The x86 driver names are exact matches and win; the
+// second pass catches ARM/SoC boards, where the CPU thermal zone surfaces as an hwmon with a
+// board-specific name (cpu_thermal, soc_thermal, scmi/scpi sensor providers, ...).
 std::string findCpuHwmon()
 {
-    for (const std::string& h : lnx::listDir("/sys/class/hwmon"))
+    std::vector<std::string> entries = lnx::listDir("/sys/class/hwmon");
+    for (const std::string& h : entries)
     {
         std::string dir = "/sys/class/hwmon/" + h;
         std::string name = lnx::readTrim(dir + "/name");
         if (name == "coretemp" || name == "k10temp" || name == "zenpower")
+        {
+            return dir;
+        }
+    }
+    for (const std::string& h : entries)
+    {
+        std::string dir = "/sys/class/hwmon/" + h;
+        std::string name = toLower(lnx::readTrim(dir + "/name"));
+        if (name.find("cpu") != std::string::npos || name == "soc_thermal" ||
+            name == "scmi_sensors" || name == "scpi_sensors")
+        {
+            return dir;
+        }
+    }
+    return {};
+}
+
+// Fallback for boards that expose the CPU thermal zone only through the thermal framework and
+// register no hwmon for it. Returns a thermal_zoneN directory whose `type` names the CPU.
+std::string findCpuThermalZone()
+{
+    for (const std::string& z : lnx::listDir("/sys/class/thermal"))
+    {
+        if (z.rfind("thermal_zone", 0) != 0)
+        {
+            continue;
+        }
+        std::string dir = "/sys/class/thermal/" + z;
+        std::string type = toLower(lnx::readTrim(dir + "/type"));
+        if (type.find("cpu") != std::string::npos || type.find("soc") != std::string::npos)
         {
             return dir;
         }
@@ -78,6 +121,10 @@ std::vector<DeviceInfo> LinuxCpuSource::discover()
     info.attributes["logical_cores"] = std::to_string(cores_);
 
     hwmonDir_ = findCpuHwmon();
+    if (hwmonDir_.empty())
+    {
+        thermalZoneDir_ = findCpuThermalZone();
+    }
     if (lnx::exists("/sys/class/powercap/intel-rapl:0/energy_uj"))
     {
         raplEnergyPath_ = "/sys/class/powercap/intel-rapl:0/energy_uj";
@@ -188,6 +235,18 @@ void LinuxCpuSource::sample(std::vector<Reading>& out)
         if (pkg > 0)
         {
             emit(Quantity::Temperature, Unit::Celsius, "Package", pkg);
+        }
+    }
+    else if (!thermalZoneDir_.empty())
+    {
+        int64_t milli = 0;
+        if (lnx::readI64(thermalZoneDir_ + "/temp", milli))
+        {
+            double c = milli / 1000.0;
+            if (c > 0 && c < 150)
+            {
+                emit(Quantity::Temperature, Unit::Celsius, "Thermal Zone", c);
+            }
         }
     }
 

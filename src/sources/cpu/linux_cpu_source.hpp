@@ -2,7 +2,8 @@
 // Copyright (c) 2026 idimus. Free for non-commercial use; commercial use requires a license.
 //
 // Linux CPU: per-core/total load (/proc/stat), clock (cpufreq), temperature (hwmon coretemp/
-// k10temp), package power (RAPL powercap energy counter).
+// k10temp on x86, SoC hwmon or a thermal zone on ARM), package power (RAPL powercap energy
+// counter, x86 only).
 #pragma once
 
 #include <cstdint>
@@ -35,6 +36,7 @@ private:
     int cores_ = 0;
     std::vector<Ticks> prev_;    // index 0 = aggregate, 1.. = per core
     std::string hwmonDir_;       // resolved CPU hwmon directory
+    std::string thermalZoneDir_; // /sys/class/thermal fallback, used only when hwmon found nothing
     std::string raplEnergyPath_; // powercap package energy_uj
     uint64_t raplMaxRange_ = 0;  // wrap range (max_energy_range_uj)
     double prevEnergyUj_ = -1, prevEnergyTime_ = 0;

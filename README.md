@@ -83,7 +83,7 @@ setup.
 
 | | 🍏 **macOS** (Apple Silicon) | 🪟 **Windows** | 🐧 **Linux** |
 | :--- | :--- | :--- | :--- |
-| **CPU** | ✅ load, temp, package/ANE power, E/P-cluster clock, fans | ✅ load, clock, name - Intel **and** AMD; package/Tctl temp + RAPL power via ring-0 MSR (PawnIO) | ✅ load (`/proc/stat`), clock (cpufreq), temp (hwmon), package power (RAPL) |
+| **CPU** | ✅ load, temp, package/ANE power, E/P-cluster clock, fans | ✅ load, clock, name - Intel **and** AMD; package/Tctl temp + RAPL power via ring-0 MSR (PawnIO); ACPI thermal zone temp without it (incl. ARM64) | ✅ load (`/proc/stat`), clock (cpufreq), temp (hwmon on x86, SoC hwmon/thermal zone on ARM), package power (RAPL, x86) |
 | **GPU** | ✅ util, memory, temp, power, clock | ✅ NVIDIA (NVML), Intel iGPU (DXGI+PDH); AMD (ADL) + Intel Arc (IGCL) <sup>1</sup> | ✅ NVIDIA (NVML); AMD/Intel via `/sys/class/drm` + hwmon |
 | **RAM** | ✅ used, available, swap | ✅ used, available, swap + commit charge | ✅ used, available, swap (`/proc/meminfo`) |
 | **Storage** | ✅ disks, size, free | ✅ disks, size, free, NVMe/ATA temp | ✅ disks, size, free, drive temp (`/sys/block`) |
@@ -187,7 +187,9 @@ powershell -ExecutionPolicy Bypass -File scripts\windows\setup-pawnio.ps1
 ```
 
 These reads require **administrator** privileges and PawnIO (the driver itself, from
-<https://pawnio.eu>) to be installed; without them the CPU source still reports load and clock.
+<https://pawnio.eu>) to be installed; without them the CPU source still reports load and clock,
+plus an ACPI thermal zone temperature where the firmware exposes one. Windows on ARM has no x86
+MSRs and so always takes that fallback.
 
 ## License
 

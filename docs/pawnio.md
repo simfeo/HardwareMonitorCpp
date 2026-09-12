@@ -26,7 +26,16 @@ Which module you need depends on the CPU vendor:
 | :--- | :--- |
 | Intel | `IntelMSR.bin` |
 | AMD (Zen, Family 17h and newer) | `AMDFamily17.bin` |
-| ARM64 | none - there are no x86 MSRs, so CPU temp/power stay unavailable |
+| ARM64 | none - there are no x86 MSRs. Temperature falls back to ACPI thermal zones (see below); package power stays unavailable |
+
+## Without PawnIO: ACPI thermal zones
+
+When the ring-0 path is unavailable - Windows on ARM, or x86 with no driver installed - the CPU
+source falls back to ACPI thermal zones read over WMI (`MSAcpi_ThermalZoneTemperature` in
+`root\WMI`) and reports them as a `Thermal Zone` channel instead of `Package`. No driver and no
+elevation needed. It is coarser than the package sensor, reflects whatever zone the firmware chose
+to expose, and plenty of OEM machines implement no zones at all, in which case temperature stays
+absent. There is no equivalent fallback for package power.
 
 ## Setup
 
