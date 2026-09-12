@@ -6,8 +6,8 @@
 // fall back to. Coarser than a package sensor and absent on plenty of OEM machines.
 #pragma once
 
-#ifdef _WIN32
-
+// Declared unconditionally, like pawnio.hpp: win_cpu_source.hpp holds one by value and is
+// compiled on every platform. Only the implementation is Windows-gated.
 struct IWbemServices;
 
 namespace hardware_monitor_cpp
@@ -36,5 +36,3 @@ private:
 
 } // namespace win
 } // namespace hardware_monitor_cpp
-
-#endif // _WIN32

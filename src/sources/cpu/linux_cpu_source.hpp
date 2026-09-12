@@ -32,14 +32,21 @@ private:
     {
         uint64_t idle = 0, total = 0;
     };
+    // One powercap package domain per socket; the counter is 32/48-bit and wraps at maxRange.
+    struct RaplDomain
+    {
+        std::string energyPath;
+        uint64_t maxRange = 0;
+        double prevUj = -1, prevTime = 0;
+    };
+
     DeviceId dev_{DeviceKind::Cpu, 0};
     int cores_ = 0;
-    std::vector<Ticks> prev_;    // index 0 = aggregate, 1.. = per core
-    std::string hwmonDir_;       // resolved CPU hwmon directory
+    std::vector<Ticks> prev_; // index 0 = aggregate, 1.. = per core
+
+    std::vector<std::string> hwmonDirs_; // CPU hwmon per physical package, ordered by hwmon index
     std::string thermalZoneDir_; // /sys/class/thermal fallback, used only when hwmon found nothing
-    std::string raplEnergyPath_; // powercap package energy_uj
-    uint64_t raplMaxRange_ = 0;  // wrap range (max_energy_range_uj)
-    double prevEnergyUj_ = -1, prevEnergyTime_ = 0;
+    std::vector<RaplDomain> rapl_;
 };
 
 } // namespace sources

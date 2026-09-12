@@ -56,14 +56,22 @@ Building this way on Windows skips the automatic PawnIO module install. Run
 NVML and Intel/AMD discrete GPUs through IGCL/ADL; each is loaded dynamically at runtime and
 simply stays absent when the vendor runtime is not installed. CPU package temperature and power
 need PawnIO; without it temperature falls back to ACPI thermal zones over WMI. x64 and ARM64 both
-build from the same sources - see [PawnIO on Windows](pawnio.md).
+build from the same sources - see [PawnIO on Windows](pawnio.md). Machines with more than 64
+logical processors are split into processor groups; load is collected per group and package
+sensors are read once per socket, so dual-socket and high-core-count systems report in full.
 
 **Linux.** Links `pthread` and `dl`. Most sources read `/proc` and `/sys` directly. NVML is
 loaded with `dlopen` when present. The hwmon, RAPL, storage-temperature and battery paths target
 bare-metal Linux; under WSL2 the kernel does not expose them, so those channels are absent while
 CPU load, memory, network and NVIDIA GPU still work. x86_64 and aarch64 build from the same
 sources; on ARM boards CPU temperature comes from the SoC hwmon or a `/sys/class/thermal` zone,
-and package power is absent because RAPL is x86-only.
+and package power is absent because RAPL is x86-only. On multi-socket x86 every `coretemp`/
+`k10temp` hwmon and every `intel-rapl:N` package domain is read, not just socket 0.
+
+**Multi-socket channel names.** A single-package machine keeps the plain `Package` channel it
+always had. Only when more than one package is found do the channels become `Package 0`,
+`Package 1` and so on (and `Tctl/Tdie 0`, `Package 0 Power`, ...), so single-socket consumers see
+no change. The CPU device also gains `packages`, and on Windows `processor_groups`, attributes.
 
 ## Submodules
 

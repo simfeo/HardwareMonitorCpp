@@ -5,6 +5,9 @@
 // power information), and - on Intel/AMD with PawnIO present - package temperature (digital
 // thermal sensor) and RAPL package/cores/uncore power. Without that ring-0 path (ARM64, or no
 // PawnIO) temperature falls back to ACPI thermal zones over WMI.
+//
+// Group- and socket-aware: load covers every processor group, and package temperature/power are
+// read once per physical package, pinning the thread to a core of each.
 #pragma once
 
 #include <cstdint>
@@ -13,6 +16,7 @@
 
 #include "hardware_monitor_cpp/source.hpp"
 #include "platform/windows/acpi_thermal.hpp"
+#include "platform/windows/cpu_topology.hpp"
 #include "platform/windows/pawnio.hpp"
 
 namespace hardware_monitor_cpp
@@ -50,25 +54,26 @@ private:
         Amd
     };
 
-    void readRapl(std::vector<Reading>& out, uint32_t msr, Energy& st, const char* channel,
+    void readRapl(std::vector<Reading>& out, uint32_t msr, Energy& st, const std::string& channel,
                   double energyJoule);
 
     // Highest current per-core clock (MHz) from P-state MSRs, pinning to each core; 0 if unavailable.
-    double sampleMsrClock(int n);
+    double sampleMsrClock();
 
     DeviceId dev_{DeviceKind::Cpu, 0};
     std::vector<Ticks> prev_;
+    win::CpuTopology topo_;
 
     win::PawnIo pawn_;
     win::AcpiThermal acpi_; // driver-free temperature fallback when the MSR path is unavailable
     Vendor vendor_ = Vendor::Other;
-    bool msr_ = false;          // ring-0 path active (module loaded + units read)
-    double tjMax_ = 100.0;      // Intel
-    double busClock_ = 100.0;   // Intel: MHz per P-state ratio step
-    double baseMhz_ = 0.0;      // rated base (non-turbo) frequency, from registry
-    double energyJoule_ = 0.0;  // joules per RAPL energy tick (Intel or AMD)
-    Energy ePkg_, ePp0_, ePp1_; // Intel package/cores/uncore
-    Energy amdPkg_;             // AMD package energy
+    bool msr_ = false;         // ring-0 path active (module loaded + units read)
+    double tjMax_ = 100.0;     // Intel
+    double busClock_ = 100.0;  // Intel: MHz per P-state ratio step
+    double baseMhz_ = 0.0;     // rated base (non-turbo) frequency, from registry
+    double energyJoule_ = 0.0; // joules per RAPL energy tick (Intel or AMD)
+    // Energy counter state per physical package. ePkg_ doubles as the AMD package domain.
+    std::vector<Energy> ePkg_, ePp0_, ePp1_;
 };
 
 } // namespace sources

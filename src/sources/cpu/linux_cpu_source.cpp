@@ -4,8 +4,10 @@
 
 #ifdef __linux__
 
+#include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
 
@@ -53,20 +55,41 @@ std::string toLower(std::string s)
     return s;
 }
 
-// Finds the CPU temperature hwmon directory. The x86 driver names are exact matches and win; the
-// second pass catches ARM/SoC boards, where the CPU thermal zone surfaces as an hwmon with a
-// board-specific name (cpu_thermal, soc_thermal, scmi/scpi sensor providers, ...).
-std::string findCpuHwmon()
+// Trailing decimal of a sysfs entry name ("hwmon3" -> 3, "intel-rapl:1" -> 1); -1 if absent.
+int trailingIndex(const std::string& name)
+{
+    size_t i = name.size();
+    while (i > 0 && isdigit((unsigned char)name[i - 1]))
+    {
+        --i;
+    }
+    return i == name.size() ? -1 : atoi(name.c_str() + i);
+}
+
+// Finds the CPU temperature hwmon directories. The x86 drivers register one hwmon per physical
+// package, so a multi-socket box yields several and all of them are kept. The second pass catches
+// ARM/SoC boards, where the CPU thermal zone surfaces as an hwmon with a board-specific name
+// (cpu_thermal, soc_thermal, scmi/scpi sensor providers, ...) and is inherently single.
+std::vector<std::string> findCpuHwmons()
 {
     std::vector<std::string> entries = lnx::listDir("/sys/class/hwmon");
+    std::sort(entries.begin(), entries.end(),
+              [](const std::string& a, const std::string& b)
+              { return trailingIndex(a) < trailingIndex(b); });
+
+    std::vector<std::string> found;
     for (const std::string& h : entries)
     {
         std::string dir = "/sys/class/hwmon/" + h;
         std::string name = lnx::readTrim(dir + "/name");
         if (name == "coretemp" || name == "k10temp" || name == "zenpower")
         {
-            return dir;
+            found.push_back(dir);
         }
+    }
+    if (!found.empty())
+    {
+        return found;
     }
     for (const std::string& h : entries)
     {
@@ -75,10 +98,39 @@ std::string findCpuHwmon()
         if (name.find("cpu") != std::string::npos || name == "soc_thermal" ||
             name == "scmi_sensors" || name == "scpi_sensors")
         {
-            return dir;
+            found.push_back(dir);
+            break;
         }
     }
-    return {};
+    return found;
+}
+
+// Top-level RAPL package domains, one per socket: "intel-rapl:N". Subdomains ("intel-rapl:0:0" =
+// cores/uncore) are skipped - their energy is already counted inside the package domain.
+std::vector<std::string> findRaplPackages()
+{
+    std::vector<std::string> entries;
+    for (const std::string& e : lnx::listDir("/sys/class/powercap"))
+    {
+        if (e.rfind("intel-rapl:", 0) != 0 || e.find(':', 11) != std::string::npos)
+        {
+            continue;
+        }
+        std::string dir = "/sys/class/powercap/" + e;
+        if (!lnx::exists(dir + "/energy_uj"))
+        {
+            continue;
+        }
+        if (toLower(lnx::readTrim(dir + "/name")).rfind("package", 0) != 0)
+        {
+            continue;
+        }
+        entries.push_back(dir);
+    }
+    std::sort(entries.begin(), entries.end(),
+              [](const std::string& a, const std::string& b)
+              { return trailingIndex(a) < trailingIndex(b); });
+    return entries;
 }
 
 // Fallback for boards that expose the CPU thermal zone only through the thermal framework and
@@ -101,6 +153,13 @@ std::string findCpuThermalZone()
     return {};
 }
 
+// Single-socket machines keep the plain "Package" channel they always had; only multi-socket
+// boxes get numbered channels, so existing consumers see no change.
+std::string packageChannel(size_t index, size_t total)
+{
+    return total > 1 ? "Package " + std::to_string(index) : std::string("Package");
+}
+
 } // namespace
 
 std::vector<DeviceInfo> LinuxCpuSource::discover()
@@ -120,19 +179,35 @@ std::vector<DeviceInfo> LinuxCpuSource::discover()
     }
     info.attributes["logical_cores"] = std::to_string(cores_);
 
-    hwmonDir_ = findCpuHwmon();
-    if (hwmonDir_.empty())
+    int nodes = 0;
+    for (const std::string& n : lnx::listDir("/sys/devices/system/node"))
+    {
+        if (n.rfind("node", 0) == 0 && n.size() > 4 && isdigit((unsigned char)n[4]))
+        {
+            ++nodes;
+        }
+    }
+    if (nodes > 1)
+    {
+        info.attributes["numa_nodes"] = std::to_string(nodes);
+    }
+
+    hwmonDirs_ = findCpuHwmons();
+    if (hwmonDirs_.empty())
     {
         thermalZoneDir_ = findCpuThermalZone();
     }
-    if (lnx::exists("/sys/class/powercap/intel-rapl:0/energy_uj"))
+    if (hwmonDirs_.size() > 1)
     {
-        raplEnergyPath_ = "/sys/class/powercap/intel-rapl:0/energy_uj";
-        uint64_t range = 0;
-        if (lnx::readU64("/sys/class/powercap/intel-rapl:0/max_energy_range_uj", range))
-        {
-            raplMaxRange_ = range;
-        }
+        info.attributes["packages"] = std::to_string(hwmonDirs_.size());
+    }
+
+    for (const std::string& dir : findRaplPackages())
+    {
+        RaplDomain d;
+        d.energyPath = dir + "/energy_uj";
+        lnx::readU64(dir + "/max_energy_range_uj", d.maxRange);
+        rapl_.push_back(d);
     }
     return {info};
 }
@@ -205,13 +280,13 @@ void LinuxCpuSource::sample(std::vector<Reading>& out)
         emit(Quantity::Clock, Unit::Megahertz, "Max Clock", maxMhz);
     }
 
-    // --- Temperature (hwmon) ---
-    if (!hwmonDir_.empty())
+    // --- Temperature (hwmon, one per physical package) ---
+    for (size_t h = 0; h < hwmonDirs_.size(); ++h)
     {
         double pkg = -1, mx = -1;
         for (int i = 1; i <= 32; ++i)
         {
-            std::string base = hwmonDir_ + "/temp" + std::to_string(i);
+            std::string base = hwmonDirs_[h] + "/temp" + std::to_string(i);
             int64_t milli = 0;
             if (!lnx::readI64(base + "_input", milli))
             {
@@ -234,10 +309,10 @@ void LinuxCpuSource::sample(std::vector<Reading>& out)
         }
         if (pkg > 0)
         {
-            emit(Quantity::Temperature, Unit::Celsius, "Package", pkg);
+            emit(Quantity::Temperature, Unit::Celsius, packageChannel(h, hwmonDirs_.size()), pkg);
         }
     }
-    else if (!thermalZoneDir_.empty())
+    if (hwmonDirs_.empty() && !thermalZoneDir_.empty())
     {
         int64_t milli = 0;
         if (lnx::readI64(thermalZoneDir_ + "/temp", milli))
@@ -250,29 +325,31 @@ void LinuxCpuSource::sample(std::vector<Reading>& out)
         }
     }
 
-    // --- Package power (RAPL) ---
-    if (!raplEnergyPath_.empty())
+    // --- Package power (RAPL, one domain per socket) ---
+    for (size_t r = 0; r < rapl_.size(); ++r)
     {
+        RaplDomain& d = rapl_[r];
         uint64_t uj = 0;
-        if (lnx::readU64(raplEnergyPath_, uj))
+        if (!lnx::readU64(d.energyPath, uj))
         {
-            double t = nowSeconds();
-            if (prevEnergyUj_ >= 0)
-            {
-                double dE = double(uj) - prevEnergyUj_;
-                if (dE < 0 && raplMaxRange_ > 0)
-                {
-                    dE += double(raplMaxRange_); // counter wrapped
-                }
-                double dt = t - prevEnergyTime_;
-                if (dt > 0 && dE >= 0)
-                {
-                    emit(Quantity::Power, Unit::Watt, "Package", dE / 1e6 / dt);
-                }
-            }
-            prevEnergyUj_ = double(uj);
-            prevEnergyTime_ = t;
+            continue;
         }
+        double t = nowSeconds();
+        if (d.prevUj >= 0)
+        {
+            double dE = double(uj) - d.prevUj;
+            if (dE < 0 && d.maxRange > 0)
+            {
+                dE += double(d.maxRange); // counter wrapped
+            }
+            double dt = t - d.prevTime;
+            if (dt > 0 && dE >= 0)
+            {
+                emit(Quantity::Power, Unit::Watt, packageChannel(r, rapl_.size()), dE / 1e6 / dt);
+            }
+        }
+        d.prevUj = double(uj);
+        d.prevTime = t;
     }
 }
 

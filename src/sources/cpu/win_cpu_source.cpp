@@ -47,6 +47,23 @@ using NtStatus = LONG;
 extern "C" NtStatus WINAPI NtQuerySystemInformation(ULONG, PVOID, ULONG, PULONG);
 constexpr ULONG kSystemProcessorPerformanceInformation = 8;
 
+// The Ex form takes a group number as its input buffer and returns that group's rows; the plain
+// form only ever reports the calling thread's group. Resolved at runtime because older SDK import
+// libraries do not export it.
+using FnNtQuerySystemInformationEx = NtStatus(WINAPI*)(ULONG, PVOID, ULONG, PVOID, ULONG, PULONG);
+
+FnNtQuerySystemInformationEx queryInformationEx()
+{
+    static FnNtQuerySystemInformationEx fn = []() -> FnNtQuerySystemInformationEx
+    {
+        HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+        return ntdll ? reinterpret_cast<FnNtQuerySystemInformationEx>(
+                           GetProcAddress(ntdll, "NtQuerySystemInformationEx"))
+                     : nullptr;
+    }();
+    return fn;
+}
+
 struct ProcPerf
 {
     LARGE_INTEGER IdleTime;
@@ -68,11 +85,12 @@ struct ProcPower
     ULONG CurrentIdleState;
 };
 
-int logicalCpuCount()
+// Single-socket machines keep the plain "Package" channel they always had; only multi-socket
+// boxes get numbered channels, so existing consumers see no change.
+std::string packageChannel(size_t index, size_t total, const char* suffix)
 {
-    SYSTEM_INFO si{};
-    GetSystemInfo(&si);
-    return int(si.dwNumberOfProcessors);
+    std::string base = total > 1 ? "Package " + std::to_string(index) : std::string("Package");
+    return *suffix ? base + " " + suffix : base;
 }
 
 } // namespace
@@ -85,7 +103,19 @@ std::vector<DeviceInfo> WinCpuSource::discover()
         win::regString(HKEY_LOCAL_MACHINE, L"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
                        L"ProcessorNameString");
     info.name = name.empty() ? "CPU" : name;
-    info.attributes["logical_cores"] = std::to_string(logicalCpuCount());
+    topo_ = win::queryCpuTopology();
+    info.attributes["logical_cores"] = std::to_string(topo_.logicalTotal);
+    if (topo_.groupSizes.size() > 1)
+    {
+        info.attributes["processor_groups"] = std::to_string(topo_.groupSizes.size());
+    }
+    if (topo_.packages.size() > 1)
+    {
+        info.attributes["packages"] = std::to_string(topo_.packages.size());
+    }
+    ePkg_.resize(topo_.packages.size());
+    ePp0_.resize(topo_.packages.size());
+    ePp1_.resize(topo_.packages.size());
     baseMhz_ = double(win::regDword(
         HKEY_LOCAL_MACHINE, L"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", L"~MHz"));
 
@@ -141,7 +171,7 @@ std::vector<DeviceInfo> WinCpuSource::discover()
 }
 
 void WinCpuSource::readRapl(std::vector<Reading>& out, uint32_t msr, Energy& st,
-                            const char* channel, double energyJoule)
+                            const std::string& channel, double energyJoule)
 {
     uint64_t v = 0;
     if (!pawn_.readMsr(msr, v))
@@ -168,60 +198,104 @@ void WinCpuSource::readRapl(std::vector<Reading>& out, uint32_t msr, Energy& st,
     }
 }
 
-double WinCpuSource::sampleMsrClock(int n)
+double WinCpuSource::sampleMsrClock()
 {
     if (!msr_ || (vendor_ != Vendor::Intel && vendor_ != Vendor::Amd))
     {
         return 0;
     }
-    HANDLE th = GetCurrentThread();
-    DWORD_PTR original = 0;
     double maxMhz = 0;
-    for (int i = 0; i < n && i < 64; ++i)
+    for (size_t g = 0; g < topo_.groupSizes.size(); ++g)
     {
-        // Pin to core i so the ring-0 read samples that core's per-core P-state MSR.
-        DWORD_PTR prev = SetThreadAffinityMask(th, DWORD_PTR(1) << i);
-        if (!prev)
+        for (int i = 0; i < topo_.groupSizes[g] && i < 64; ++i)
         {
-            continue;
-        }
-        if (!original)
-        {
-            original = prev;
-        }
-        uint64_t v = 0;
-        double f = 0;
-        if (vendor_ == Vendor::Intel)
-        {
-            if (pawn_.readMsr(MSR_IA32_PERF_STATUS, v))
+            // Pin to this processor so the ring-0 read samples its own per-core P-state MSR.
+            win::ProcessorRef pr;
+            pr.group = uint16_t(g);
+            pr.number = uint8_t(i);
+            win::ScopedProcessorPin pin(pr);
+            if (!pin.ok())
             {
-                f = double((v >> 8) & 0xFF) * busClock_;
+                continue;
+            }
+            uint64_t v = 0;
+            double f = 0;
+            if (vendor_ == Vendor::Intel)
+            {
+                if (pawn_.readMsr(MSR_IA32_PERF_STATUS, v))
+                {
+                    f = double((v >> 8) & 0xFF) * busClock_;
+                }
+            }
+            else if (pawn_.readMsr(MSR_AMD_HW_PSTATE_STATUS, v))
+            {
+                double fid = double(v & 0xFF);
+                double did = double((v >> 8) & 0x3F);
+                if (did > 0)
+                {
+                    f = fid / did * 200.0; // CoreCOF = CpuFid/CpuDfsId * 200 MHz
+                }
+            }
+            if (f > maxMhz)
+            {
+                maxMhz = f;
             }
         }
-        else if (pawn_.readMsr(MSR_AMD_HW_PSTATE_STATUS, v))
-        {
-            double fid = double(v & 0xFF);
-            double did = double((v >> 8) & 0x3F);
-            if (did > 0)
-            {
-                f = fid / did * 200.0; // CoreCOF = CpuFid/CpuDfsId * 200 MHz
-            }
-        }
-        if (f > maxMhz)
-        {
-            maxMhz = f;
-        }
-    }
-    if (original)
-    {
-        SetThreadAffinityMask(th, original);
     }
     return maxMhz;
 }
 
+} // namespace
+
+namespace
+{
+
+// Fills `out` with one row per logical processor across every group, in group order. Returns the
+// number of rows, which is 0 when the query failed.
+int collectPerf(const win::CpuTopology& topo, std::vector<ProcPerf>& out)
+{
+    out.clear();
+    auto queryEx = queryInformationEx();
+    if (queryEx && topo.groupSizes.size() > 1)
+    {
+        for (size_t g = 0; g < topo.groupSizes.size(); ++g)
+        {
+            std::vector<ProcPerf> rows(size_t(topo.groupSizes[g]));
+            USHORT group = USHORT(g);
+            ULONG returned = 0;
+            if (queryEx(kSystemProcessorPerformanceInformation, &group, sizeof(group), rows.data(),
+                        ULONG(rows.size() * sizeof(ProcPerf)), &returned) != 0)
+            {
+                out.clear();
+                return 0;
+            }
+            size_t got = returned / sizeof(ProcPerf);
+            if (got > rows.size())
+            {
+                got = rows.size();
+            }
+            out.insert(out.end(), rows.begin(), rows.begin() + ptrdiff_t(got));
+        }
+        return int(out.size());
+    }
+
+    out.resize(size_t(topo.logicalTotal));
+    ULONG returned = 0;
+    if (NtQuerySystemInformation(kSystemProcessorPerformanceInformation, out.data(),
+                                 ULONG(out.size() * sizeof(ProcPerf)), &returned) != 0)
+    {
+        out.clear();
+        return 0;
+    }
+    out.resize(returned / sizeof(ProcPerf));
+    return int(out.size());
+}
+
+} // namespace
+
 void WinCpuSource::sample(std::vector<Reading>& out)
 {
-    int n = logicalCpuCount();
+    int n = topo_.logicalTotal;
     if (n <= 0)
     {
         return;
@@ -230,10 +304,8 @@ void WinCpuSource::sample(std::vector<Reading>& out)
     { out.push_back(Reading{dev_, q, u, ch, v}); };
 
     // --- Load ---
-    std::vector<ProcPerf> perf(n);
-    ULONG returned = 0;
-    if (NtQuerySystemInformation(kSystemProcessorPerformanceInformation, perf.data(),
-                                 ULONG(perf.size() * sizeof(ProcPerf)), &returned) == 0)
+    std::vector<ProcPerf> perf;
+    if (collectPerf(topo_, perf) == n)
     {
         std::vector<Ticks> cur(n);
         for (int i = 0; i < n; ++i)
@@ -263,7 +335,7 @@ void WinCpuSource::sample(std::vector<Reading>& out)
     // The per-core P-state MSRs give a true dynamic clock; CurrentMhz from CallNtPowerInformation is
     // unreliable/static on modern CPUs. Without ring-0 access we can't report a live value, so we
     // report base + max clock instead of a misleading static "current".
-    double msrClock = sampleMsrClock(n);
+    double msrClock = sampleMsrClock();
     if (msrClock > 0)
     {
         emit(Quantity::Clock, Unit::Megahertz, "Core Clock", msrClock);
@@ -272,6 +344,8 @@ void WinCpuSource::sample(std::vector<Reading>& out)
     {
         emit(Quantity::Clock, Unit::Megahertz, "Base Clock", baseMhz_);
     }
+    // Group-limited: on a multi-group machine this only fills the calling thread's group, leaving
+    // the rest zeroed. Harmless here because MaxMhz is a rated value, identical on every socket.
     std::vector<ProcPower> power(n);
     if (CallNtPowerInformation(ProcessorInformation, nullptr, 0, power.data(),
                                ULONG(power.size() * sizeof(ProcPower))) == 0)
@@ -284,38 +358,54 @@ void WinCpuSource::sample(std::vector<Reading>& out)
         emit(Quantity::Clock, Unit::Megahertz, "Max Clock", double(maxMhz));
     }
 
-    // --- Temperature + power (ring-0 MSR via PawnIO) ---
+    // --- Temperature + power (ring-0 MSR via PawnIO, once per physical package) ---
+    // Package MSRs are per-socket, so the thread is pinned to a core of each package in turn.
+    size_t packages = topo_.packages.size();
     if (msr_ && vendor_ == Vendor::Intel)
     {
-        uint64_t v = 0;
-        if (pawn_.readMsr(MSR_IA32_PACKAGE_THERM_STATUS, v))
+        for (size_t p = 0; p < packages; ++p)
         {
-            double tC = tjMax_ - double((v >> 16) & 0x7F); // readout = degrees below TjMax
-            if (tC > 0 && tC < 130)
+            win::ScopedProcessorPin pin(topo_.packages[p]);
+            uint64_t v = 0;
+            if (pawn_.readMsr(MSR_IA32_PACKAGE_THERM_STATUS, v))
             {
-                emit(Quantity::Temperature, Unit::Celsius, "Package", tC);
+                double tC = tjMax_ - double((v >> 16) & 0x7F); // readout = degrees below TjMax
+                if (tC > 0 && tC < 130)
+                {
+                    emit(Quantity::Temperature, Unit::Celsius, packageChannel(p, packages, ""), tC);
+                }
             }
+            readRapl(out, MSR_PKG_ENERGY_STATUS, ePkg_[p],
+                     packageChannel(p, packages, "Power"), energyJoule_);
+            readRapl(out, MSR_PP0_ENERGY_STATUS, ePp0_[p],
+                     packageChannel(p, packages, "Cores Power"), energyJoule_);
+            readRapl(out, MSR_PP1_ENERGY_STATUS, ePp1_[p],
+                     packageChannel(p, packages, "Uncore Power"), energyJoule_);
         }
-        readRapl(out, MSR_PKG_ENERGY_STATUS, ePkg_, "Package Power", energyJoule_);
-        readRapl(out, MSR_PP0_ENERGY_STATUS, ePp0_, "Cores Power", energyJoule_);
-        readRapl(out, MSR_PP1_ENERGY_STATUS, ePp1_, "Uncore Power", energyJoule_);
     }
     else if (msr_ && vendor_ == Vendor::Amd)
     {
-        uint64_t v = 0;
-        if (pawn_.readSmn(SMN_THM_CUR_TEMP, v))
+        for (size_t p = 0; p < packages; ++p)
         {
-            double tC = double((v >> 21) & 0x7FF) * 0.125; // Tctl/Tdie
-            if (v & (1u << 19))
+            win::ScopedProcessorPin pin(topo_.packages[p]);
+            uint64_t v = 0;
+            if (pawn_.readSmn(SMN_THM_CUR_TEMP, v))
             {
-                tC -= 49.0; // CUR_TEMP_RANGE_SEL
+                double tC = double((v >> 21) & 0x7FF) * 0.125; // Tctl/Tdie
+                if (v & (1u << 19))
+                {
+                    tC -= 49.0; // CUR_TEMP_RANGE_SEL
+                }
+                if (tC > 0 && tC < 130)
+                {
+                    std::string ch =
+                        packages > 1 ? "Tctl/Tdie " + std::to_string(p) : std::string("Tctl/Tdie");
+                    emit(Quantity::Temperature, Unit::Celsius, ch, tC);
+                }
             }
-            if (tC > 0 && tC < 130)
-            {
-                emit(Quantity::Temperature, Unit::Celsius, "Tctl/Tdie", tC);
-            }
+            readRapl(out, MSR_AMD_PKG_ENERGY, ePkg_[p],
+                     packageChannel(p, packages, "Power"), energyJoule_);
         }
-        readRapl(out, MSR_AMD_PKG_ENERGY, amdPkg_, "Package Power", energyJoule_);
     }
     else
     {
