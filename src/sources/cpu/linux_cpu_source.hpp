@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 // Copyright (c) 2026 idimus. Free for non-commercial use; commercial use requires a license.
 //
-// Linux CPU: per-core/total load (/proc/stat), clock (cpufreq), temperature (hwmon coretemp/
-// k10temp on x86, SoC hwmon or a thermal zone on ARM), package power (RAPL powercap energy
-// counter, x86 only).
+// Linux CPU: one device per physical package, each reporting per-core/total load (/proc/stat),
+// clock (cpufreq), temperature (hwmon coretemp/k10temp on x86, SoC hwmon or a thermal zone on
+// ARM) and package power (RAPL powercap energy counter, x86 only).
 #pragma once
 
 #include <cstdint>
@@ -40,13 +40,18 @@ private:
         double prevUj = -1, prevTime = 0;
     };
 
-    DeviceId dev_{DeviceKind::Cpu, 0};
-    int cores_ = 0;
-    std::vector<Ticks> prev_; // index 0 = aggregate, 1.. = per core
+    struct Package
+    {
+        DeviceId dev{DeviceKind::Cpu, 0};
+        int physicalId = 0;
+        std::vector<int> cpus;       // logical processor indices belonging to this package
+        std::string hwmonDir;        // coretemp/k10temp hwmon for this package, if any
+        std::string thermalZoneDir;  // /sys/class/thermal fallback, only when no hwmon was found
+        RaplDomain rapl;             // energyPath empty when this package exposes no RAPL domain
+    };
 
-    std::vector<std::string> hwmonDirs_; // CPU hwmon per physical package, ordered by hwmon index
-    std::string thermalZoneDir_; // /sys/class/thermal fallback, used only when hwmon found nothing
-    std::vector<RaplDomain> rapl_;
+    std::vector<Package> packages_;
+    std::vector<Ticks> prev_; // indexed by logical processor, from /proc/stat's per-cpu rows
 };
 
 } // namespace sources

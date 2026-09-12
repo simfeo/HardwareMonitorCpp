@@ -13,17 +13,16 @@ namespace win
 namespace
 {
 
-// Index of the lowest set bit of a group mask, i.e. the first processor of that group affinity.
-int firstSetBit(KAFFINITY mask)
+// Position of a processor in the flat, group-ordered array: every earlier group in full, then its
+// own index within its group.
+int flatIndex(const std::vector<int>& groupSizes, const ProcessorRef& p)
 {
-    for (int i = 0; i < int(sizeof(KAFFINITY) * 8); ++i)
+    int base = 0;
+    for (size_t g = 0; g < groupSizes.size() && g < p.group; ++g)
     {
-        if (mask & (KAFFINITY(1) << i))
-        {
-            return i;
-        }
+        base += groupSizes[g];
     }
-    return -1;
+    return base + p.number;
 }
 
 } // namespace
@@ -66,14 +65,26 @@ CpuTopology queryCpuTopology()
                 }
                 if (rec->Relationship == RelationProcessorPackage && rec->Processor.GroupCount > 0)
                 {
-                    const GROUP_AFFINITY& ga = rec->Processor.GroupMask[0];
-                    int bit = firstSetBit(ga.Mask);
-                    if (bit >= 0)
+                    PackageInfo pkg;
+                    for (WORD gi = 0; gi < rec->Processor.GroupCount; ++gi)
                     {
-                        ProcessorRef pr;
-                        pr.group = uint16_t(ga.Group);
-                        pr.number = uint8_t(bit);
-                        t.packages.push_back(pr);
+                        const GROUP_AFFINITY& ga = rec->Processor.GroupMask[gi];
+                        for (int bit = 0; bit < int(sizeof(KAFFINITY) * 8); ++bit)
+                        {
+                            if (!(ga.Mask & (KAFFINITY(1) << bit)))
+                            {
+                                continue;
+                            }
+                            ProcessorRef pr;
+                            pr.group = uint16_t(ga.Group);
+                            pr.number = uint8_t(bit);
+                            pkg.processors.push_back(pr);
+                            pkg.flatIndices.push_back(flatIndex(t.groupSizes, pr));
+                        }
+                    }
+                    if (!pkg.processors.empty())
+                    {
+                        t.packages.push_back(pkg);
                     }
                 }
                 p += rec->Size;
@@ -82,7 +93,20 @@ CpuTopology queryCpuTopology()
     }
     if (t.packages.empty())
     {
-        t.packages.push_back(ProcessorRef{}); // single package: group 0, processor 0
+        // No topology available: treat the machine as one package holding every processor.
+        PackageInfo pkg;
+        for (size_t g = 0; g < t.groupSizes.size(); ++g)
+        {
+            for (int i = 0; i < t.groupSizes[g]; ++i)
+            {
+                ProcessorRef pr;
+                pr.group = uint16_t(g);
+                pr.number = uint8_t(i);
+                pkg.processors.push_back(pr);
+                pkg.flatIndices.push_back(flatIndex(t.groupSizes, pr));
+            }
+        }
+        t.packages.push_back(pkg);
     }
     return t;
 }

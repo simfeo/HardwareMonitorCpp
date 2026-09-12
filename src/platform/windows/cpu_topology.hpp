@@ -23,11 +23,18 @@ struct ProcessorRef
     uint8_t number = 0;
 };
 
+struct PackageInfo
+{
+    std::vector<ProcessorRef> processors; // every logical processor of this package
+    // Indices into the flat, group-ordered processor array that collectPerf() fills.
+    std::vector<int> flatIndices;
+};
+
 struct CpuTopology
 {
-    int logicalTotal = 0;                 // active processors across every group
-    std::vector<int> groupSizes;          // active processors in each group
-    std::vector<ProcessorRef> packages;   // one representative processor per physical package
+    int logicalTotal = 0;              // active processors across every group
+    std::vector<int> groupSizes;       // active processors in each group
+    std::vector<PackageInfo> packages; // one entry per physical package
 };
 
 #ifdef _WIN32

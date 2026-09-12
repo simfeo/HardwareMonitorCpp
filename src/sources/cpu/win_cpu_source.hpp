@@ -6,8 +6,9 @@
 // thermal sensor) and RAPL package/cores/uncore power. Without that ring-0 path (ARM64, or no
 // PawnIO) temperature falls back to ACPI thermal zones over WMI.
 //
-// Group- and socket-aware: load covers every processor group, and package temperature/power are
-// read once per physical package, pinning the thread to a core of each.
+// One device per physical package: load, clock, temperature and power are all reported per CPU.
+// Load covers every processor group, and the package MSRs are read with the thread pinned to a
+// core of the package being sampled.
 #pragma once
 
 #include <cstdint>
@@ -54,14 +55,14 @@ private:
         Amd
     };
 
-    void readRapl(std::vector<Reading>& out, uint32_t msr, Energy& st, const std::string& channel,
-                  double energyJoule);
+    void readRapl(std::vector<Reading>& out, const DeviceId& dev, uint32_t msr, Energy& st,
+                  const std::string& channel, double energyJoule);
 
-    // Highest current per-core clock (MHz) from P-state MSRs, pinning to each core; 0 if unavailable.
-    double sampleMsrClock();
+    // Highest current clock (MHz) among this package's cores, from the per-core P-state MSRs,
+    // pinning to each in turn; 0 if unavailable.
+    double sampleMsrClock(const win::PackageInfo& pkg);
 
-    DeviceId dev_{DeviceKind::Cpu, 0};
-    std::vector<Ticks> prev_;
+    std::vector<Ticks> prev_; // indexed by the flat, group-ordered processor array
     win::CpuTopology topo_;
 
     win::PawnIo pawn_;

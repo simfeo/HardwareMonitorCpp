@@ -57,8 +57,8 @@ NVML and Intel/AMD discrete GPUs through IGCL/ADL; each is loaded dynamically at
 simply stays absent when the vendor runtime is not installed. CPU package temperature and power
 need PawnIO; without it temperature falls back to ACPI thermal zones over WMI. x64 and ARM64 both
 build from the same sources - see [PawnIO on Windows](pawnio.md). Machines with more than 64
-logical processors are split into processor groups; load is collected per group and package
-sensors are read once per socket, so dual-socket and high-core-count systems report in full.
+logical processors are split into processor groups; load is collected per group and each socket is
+reported as its own device, so dual-socket and high-core-count systems report in full.
 
 **Linux.** Links `pthread` and `dl`. Most sources read `/proc` and `/sys` directly. NVML is
 loaded with `dlopen` when present. The hwmon, RAPL, storage-temperature and battery paths target
@@ -68,10 +68,11 @@ sources; on ARM boards CPU temperature comes from the SoC hwmon or a `/sys/class
 and package power is absent because RAPL is x86-only. On multi-socket x86 every `coretemp`/
 `k10temp` hwmon and every `intel-rapl:N` package domain is read, not just socket 0.
 
-**Multi-socket channel names.** A single-package machine keeps the plain `Package` channel it
-always had. Only when more than one package is found do the channels become `Package 0`,
-`Package 1` and so on (and `Tctl/Tdie 0`, `Package 0 Power`, ...), so single-socket consumers see
-no change. The CPU device also gains `packages`, and on Windows `processor_groups`, attributes.
+**One device per CPU.** Each physical package is discovered as its own device - `cpu/0`, `cpu/1`,
+... - carrying its own load, clock, temperature and power on the usual channel names (`Total`,
+`Core N`, `Core Clock`, `Package`). A single-socket machine is therefore unchanged: one `cpu/0`
+with exactly the channels it always had. Each device reports its own `logical_cores`, plus
+`packages` (and on Windows `processor_groups`, on Linux `numa_nodes`) when there is more than one.
 
 ## Submodules
 

@@ -85,34 +85,33 @@ struct ProcPower
     ULONG CurrentIdleState;
 };
 
-// Single-socket machines keep the plain "Package" channel they always had; only multi-socket
-// boxes get numbered channels, so existing consumers see no change.
-std::string packageChannel(size_t index, size_t total, const char* suffix)
-{
-    std::string base = total > 1 ? "Package " + std::to_string(index) : std::string("Package");
-    return *suffix ? base + " " + suffix : base;
-}
-
 } // namespace
 
 std::vector<DeviceInfo> WinCpuSource::discover()
 {
-    DeviceInfo info;
-    info.id = dev_;
     std::string name =
         win::regString(HKEY_LOCAL_MACHINE, L"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
                        L"ProcessorNameString");
-    info.name = name.empty() ? "CPU" : name;
     topo_ = win::queryCpuTopology();
-    info.attributes["logical_cores"] = std::to_string(topo_.logicalTotal);
-    if (topo_.groupSizes.size() > 1)
+
+    std::vector<DeviceInfo> devices;
+    for (size_t p = 0; p < topo_.packages.size(); ++p)
     {
-        info.attributes["processor_groups"] = std::to_string(topo_.groupSizes.size());
+        DeviceInfo info;
+        info.id = DeviceId{DeviceKind::Cpu, int(p)};
+        info.name = name.empty() ? "CPU" : name;
+        info.attributes["logical_cores"] = std::to_string(topo_.packages[p].processors.size());
+        if (topo_.groupSizes.size() > 1)
+        {
+            info.attributes["processor_groups"] = std::to_string(topo_.groupSizes.size());
+        }
+        if (topo_.packages.size() > 1)
+        {
+            info.attributes["packages"] = std::to_string(topo_.packages.size());
+        }
+        devices.push_back(info);
     }
-    if (topo_.packages.size() > 1)
-    {
-        info.attributes["packages"] = std::to_string(topo_.packages.size());
-    }
+
     ePkg_.resize(topo_.packages.size());
     ePp0_.resize(topo_.packages.size());
     ePp1_.resize(topo_.packages.size());
@@ -125,7 +124,7 @@ std::vector<DeviceInfo> WinCpuSource::discover()
                        L"VendorIdentifier");
     if (!pawn_.ok())
     {
-        return {info};
+        return devices;
     }
     uint64_t v = 0;
     if (vendor == "GenuineIntel" && pawn_.loadModule("IntelMSR"))
@@ -146,7 +145,10 @@ std::vector<DeviceInfo> WinCpuSource::discover()
         }
         if (msr_)
         {
-            info.attributes["tjmax_c"] = std::to_string(int(tjMax_));
+            for (DeviceInfo& d : devices)
+            {
+                d.attributes["tjmax_c"] = std::to_string(int(tjMax_));
+            }
         }
         // Derive MHz-per-ratio from the base frequency and base ratio; fall back to 100 MHz.
         if (msr_ && baseMhz_ > 0 && pawn_.readMsr(MSR_PLATFORM_INFO, v))
@@ -167,11 +169,11 @@ std::vector<DeviceInfo> WinCpuSource::discover()
             msr_ = energyJoule_ > 0;
         }
     }
-    return {info};
+    return devices;
 }
 
-void WinCpuSource::readRapl(std::vector<Reading>& out, uint32_t msr, Energy& st,
-                            const std::string& channel, double energyJoule)
+void WinCpuSource::readRapl(std::vector<Reading>& out, const DeviceId& dev, uint32_t msr,
+                            Energy& st, const std::string& channel, double energyJoule)
 {
     uint64_t v = 0;
     if (!pawn_.readMsr(msr, v))
@@ -193,53 +195,47 @@ void WinCpuSource::readRapl(std::vector<Reading>& out, uint32_t msr, Energy& st,
     st.t = t;
     if (dt > 0)
     {
-        out.push_back(Reading{dev_, Quantity::Power, Unit::Watt, channel,
+        out.push_back(Reading{dev, Quantity::Power, Unit::Watt, channel,
                               double(deltaTicks) * energyJoule / dt});
     }
 }
 
-double WinCpuSource::sampleMsrClock()
+double WinCpuSource::sampleMsrClock(const win::PackageInfo& pkg)
 {
     if (!msr_ || (vendor_ != Vendor::Intel && vendor_ != Vendor::Amd))
     {
         return 0;
     }
     double maxMhz = 0;
-    for (size_t g = 0; g < topo_.groupSizes.size(); ++g)
+    for (const win::ProcessorRef& pr : pkg.processors)
     {
-        for (int i = 0; i < topo_.groupSizes[g] && i < 64; ++i)
+        // Pin to this processor so the ring-0 read samples its own per-core P-state MSR.
+        win::ScopedProcessorPin pin(pr);
+        if (!pin.ok())
         {
-            // Pin to this processor so the ring-0 read samples its own per-core P-state MSR.
-            win::ProcessorRef pr;
-            pr.group = uint16_t(g);
-            pr.number = uint8_t(i);
-            win::ScopedProcessorPin pin(pr);
-            if (!pin.ok())
+            continue;
+        }
+        uint64_t v = 0;
+        double f = 0;
+        if (vendor_ == Vendor::Intel)
+        {
+            if (pawn_.readMsr(MSR_IA32_PERF_STATUS, v))
             {
-                continue;
+                f = double((v >> 8) & 0xFF) * busClock_;
             }
-            uint64_t v = 0;
-            double f = 0;
-            if (vendor_ == Vendor::Intel)
+        }
+        else if (pawn_.readMsr(MSR_AMD_HW_PSTATE_STATUS, v))
+        {
+            double fid = double(v & 0xFF);
+            double did = double((v >> 8) & 0x3F);
+            if (did > 0)
             {
-                if (pawn_.readMsr(MSR_IA32_PERF_STATUS, v))
-                {
-                    f = double((v >> 8) & 0xFF) * busClock_;
-                }
+                f = fid / did * 200.0; // CoreCOF = CpuFid/CpuDfsId * 200 MHz
             }
-            else if (pawn_.readMsr(MSR_AMD_HW_PSTATE_STATUS, v))
-            {
-                double fid = double(v & 0xFF);
-                double did = double((v >> 8) & 0x3F);
-                if (did > 0)
-                {
-                    f = fid / did * 200.0; // CoreCOF = CpuFid/CpuDfsId * 200 MHz
-                }
-            }
-            if (f > maxMhz)
-            {
-                maxMhz = f;
-            }
+        }
+        if (f > maxMhz)
+        {
+            maxMhz = f;
         }
     }
     return maxMhz;
@@ -298,94 +294,109 @@ void WinCpuSource::sample(std::vector<Reading>& out)
     {
         return;
     }
-    auto emit = [&](Quantity q, Unit u, const std::string& ch, double v)
-    { out.push_back(Reading{dev_, q, u, ch, v}); };
 
-    // --- Load ---
     std::vector<ProcPerf> perf;
-    if (collectPerf(topo_, perf) == n)
+    bool haveLoad = collectPerf(topo_, perf) == n;
+    std::vector<Ticks> cur;
+    if (haveLoad)
     {
-        std::vector<Ticks> cur(n);
+        cur.resize(size_t(n));
         for (int i = 0; i < n; ++i)
         {
             uint64_t idle = uint64_t(perf[i].IdleTime.QuadPart);
             uint64_t total =
                 uint64_t(perf[i].KernelTime.QuadPart) + uint64_t(perf[i].UserTime.QuadPart);
-            cur[i] = {idle, total};
+            cur[size_t(i)] = {idle, total};
         }
-        if (int(prev_.size()) == n)
-        {
-            double sum = 0;
-            for (int i = 0; i < n; ++i)
-            {
-                uint64_t dt = cur[i].total - prev_[i].total;
-                uint64_t di = cur[i].idle - prev_[i].idle;
-                double pct = dt ? 100.0 * double(dt - di) / double(dt) : 0.0;
-                emit(Quantity::Load, Unit::Percent, "Core " + std::to_string(i), pct);
-                sum += pct;
-            }
-            emit(Quantity::Load, Unit::Percent, "Total", sum / n);
-        }
-        prev_ = std::move(cur);
     }
+    bool haveDelta = haveLoad && int(prev_.size()) == n;
 
-    // --- Clock ---
-    // The per-core P-state MSRs give a true dynamic clock; CurrentMhz from CallNtPowerInformation is
-    // unreliable/static on modern CPUs. Without ring-0 access we can't report a live value, so we
-    // report base + max clock instead of a misleading static "current".
-    double msrClock = sampleMsrClock();
-    if (msrClock > 0)
-    {
-        emit(Quantity::Clock, Unit::Megahertz, "Core Clock", msrClock);
-    }
-    else if (baseMhz_ > 0)
-    {
-        emit(Quantity::Clock, Unit::Megahertz, "Base Clock", baseMhz_);
-    }
-    // Group-limited: on a multi-group machine this only fills the calling thread's group, leaving
-    // the rest zeroed. Harmless here because MaxMhz is a rated value, identical on every socket.
-    std::vector<ProcPower> power(n);
+    // Rated maximum frequency. Group-limited on a multi-group machine - it only fills the calling
+    // thread's group - but MaxMhz is a static rated value, identical on every socket.
+    ULONG ratedMaxMhz = 0;
+    std::vector<ProcPower> power(size_t(n));
     if (CallNtPowerInformation(ProcessorInformation, nullptr, 0, power.data(),
                                ULONG(power.size() * sizeof(ProcPower))) == 0)
     {
-        ULONG maxMhz = 0;
         for (int i = 0; i < n; ++i)
         {
-            maxMhz = (power[i].MaxMhz > maxMhz) ? power[i].MaxMhz : maxMhz;
+            ratedMaxMhz = (power[size_t(i)].MaxMhz > ratedMaxMhz) ? power[size_t(i)].MaxMhz
+                                                                  : ratedMaxMhz;
         }
-        emit(Quantity::Clock, Unit::Megahertz, "Max Clock", double(maxMhz));
     }
 
-    // --- Temperature + power (ring-0 MSR via PawnIO, once per physical package) ---
-    // Package MSRs are per-socket, so the thread is pinned to a core of each package in turn.
-    size_t packages = topo_.packages.size();
-    if (msr_ && vendor_ == Vendor::Intel)
+    for (size_t p = 0; p < topo_.packages.size(); ++p)
     {
-        for (size_t p = 0; p < packages; ++p)
+        const win::PackageInfo& pkg = topo_.packages[p];
+        DeviceId dev{DeviceKind::Cpu, int(p)};
+        auto emit = [&](Quantity q, Unit u, const std::string& ch, double v)
+        { out.push_back(Reading{dev, q, u, ch, v}); };
+
+        // --- Load, over this package's own processors ---
+        if (haveDelta)
         {
-            win::ScopedProcessorPin pin(topo_.packages[p]);
+            uint64_t sumTotal = 0, sumIdle = 0;
+            for (size_t k = 0; k < pkg.flatIndices.size(); ++k)
+            {
+                size_t i = size_t(pkg.flatIndices[k]);
+                if (i >= cur.size())
+                {
+                    continue;
+                }
+                uint64_t dt = cur[i].total - prev_[i].total;
+                uint64_t di = cur[i].idle - prev_[i].idle;
+                sumTotal += dt;
+                sumIdle += di;
+                double pct = dt ? 100.0 * double(dt - di) / double(dt) : 0.0;
+                emit(Quantity::Load, Unit::Percent, "Core " + std::to_string(k), pct);
+            }
+            if (sumTotal)
+            {
+                emit(Quantity::Load, Unit::Percent, "Total",
+                     100.0 * double(sumTotal - sumIdle) / double(sumTotal));
+            }
+        }
+
+        // --- Clock ---
+        // The per-core P-state MSRs give a true dynamic clock; CurrentMhz from
+        // CallNtPowerInformation is unreliable/static on modern CPUs. Without ring-0 access we
+        // can't report a live value, so we report base + max clock instead of a misleading
+        // static "current".
+        double msrClock = sampleMsrClock(pkg);
+        if (msrClock > 0)
+        {
+            emit(Quantity::Clock, Unit::Megahertz, "Core Clock", msrClock);
+        }
+        else if (baseMhz_ > 0)
+        {
+            emit(Quantity::Clock, Unit::Megahertz, "Base Clock", baseMhz_);
+        }
+        if (ratedMaxMhz > 0)
+        {
+            emit(Quantity::Clock, Unit::Megahertz, "Max Clock", double(ratedMaxMhz));
+        }
+
+        // --- Temperature + power (ring-0 MSR via PawnIO) ---
+        // Package MSRs are per-socket, so the thread is pinned to a core of this package first.
+        if (msr_ && vendor_ == Vendor::Intel)
+        {
+            win::ScopedProcessorPin pin(pkg.processors.front());
             uint64_t v = 0;
             if (pawn_.readMsr(MSR_IA32_PACKAGE_THERM_STATUS, v))
             {
                 double tC = tjMax_ - double((v >> 16) & 0x7F); // readout = degrees below TjMax
                 if (tC > 0 && tC < 130)
                 {
-                    emit(Quantity::Temperature, Unit::Celsius, packageChannel(p, packages, ""), tC);
+                    emit(Quantity::Temperature, Unit::Celsius, "Package", tC);
                 }
             }
-            readRapl(out, MSR_PKG_ENERGY_STATUS, ePkg_[p],
-                     packageChannel(p, packages, "Power"), energyJoule_);
-            readRapl(out, MSR_PP0_ENERGY_STATUS, ePp0_[p],
-                     packageChannel(p, packages, "Cores Power"), energyJoule_);
-            readRapl(out, MSR_PP1_ENERGY_STATUS, ePp1_[p],
-                     packageChannel(p, packages, "Uncore Power"), energyJoule_);
+            readRapl(out, dev, MSR_PKG_ENERGY_STATUS, ePkg_[p], "Package Power", energyJoule_);
+            readRapl(out, dev, MSR_PP0_ENERGY_STATUS, ePp0_[p], "Cores Power", energyJoule_);
+            readRapl(out, dev, MSR_PP1_ENERGY_STATUS, ePp1_[p], "Uncore Power", energyJoule_);
         }
-    }
-    else if (msr_ && vendor_ == Vendor::Amd)
-    {
-        for (size_t p = 0; p < packages; ++p)
+        else if (msr_ && vendor_ == Vendor::Amd)
         {
-            win::ScopedProcessorPin pin(topo_.packages[p]);
+            win::ScopedProcessorPin pin(pkg.processors.front());
             uint64_t v = 0;
             if (pawn_.readSmn(SMN_THM_CUR_TEMP, v))
             {
@@ -396,24 +407,26 @@ void WinCpuSource::sample(std::vector<Reading>& out)
                 }
                 if (tC > 0 && tC < 130)
                 {
-                    std::string ch =
-                        packages > 1 ? "Tctl/Tdie " + std::to_string(p) : std::string("Tctl/Tdie");
-                    emit(Quantity::Temperature, Unit::Celsius, ch, tC);
+                    emit(Quantity::Temperature, Unit::Celsius, "Tctl/Tdie", tC);
                 }
             }
-            readRapl(out, MSR_AMD_PKG_ENERGY, ePkg_[p],
-                     packageChannel(p, packages, "Power"), energyJoule_);
+            readRapl(out, dev, MSR_AMD_PKG_ENERGY, ePkg_[p], "Package Power", energyJoule_);
+        }
+        else if (p == 0)
+        {
+            // No ring-0 MSR path: ARM64, or x86 without PawnIO. ACPI thermal zones are all that
+            // is left, and they are not attributable to a socket, so only the first CPU gets one.
+            double tC = 0;
+            if (acpi_.sample(tC))
+            {
+                emit(Quantity::Temperature, Unit::Celsius, "Thermal Zone", tC);
+            }
         }
     }
-    else
+
+    if (haveLoad)
     {
-        // No ring-0 MSR path: ARM64, or x86 without PawnIO. ACPI thermal zones are all that is
-        // left; there is no equivalent fallback for package power, so power stays absent.
-        double tC = 0;
-        if (acpi_.sample(tC))
-        {
-            emit(Quantity::Temperature, Unit::Celsius, "Thermal Zone", tC);
-        }
+        prev_ = std::move(cur);
     }
 }
 
