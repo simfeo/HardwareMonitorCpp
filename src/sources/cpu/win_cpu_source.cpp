@@ -245,8 +245,6 @@ double WinCpuSource::sampleMsrClock()
     return maxMhz;
 }
 
-} // namespace
-
 namespace
 {
 
